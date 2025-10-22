@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Countdown</title>
-  <meta name="description" content="Centered countdown with full-screen background and edge thumbnails." />
+  <meta name="description" content="Centered countdown with a smart photo wall that avoids the timer." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23000'/%3E%3Ctext x='50' y='62' font-size='56' text-anchor='middle' fill='%23fff'%3E%F0%9F%95%9B%EF%B8%8F%3C/text%3E%3C/svg%3E" />
   <style>
     :root{
@@ -14,6 +14,9 @@
       --ring: rgba(255,255,255,.28);
       --shadow: 0 20px 60px rgba(0,0,0,.55);
       --radius: 18px;
+      --tile-gap: 6px;             /* space between tiles */
+      --tile-target: 150px;        /* desired tile size (px), grid auto-calculates */
+      --tile-radius: 10px;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
@@ -26,28 +29,41 @@
       -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
     }
 
-    /* Background slideshow */
-    .bg, .bg2{
-      position: fixed; inset: 0;
-      background-position: center;
-      background-size: cover;
-      background-repeat: no-repeat;
-      filter: brightness(.56) saturate(1.05);
-      transition: opacity 1.1s ease;
+    /* ===== PHOTO WALL LAYER ===== */
+    .wall{
+      position: fixed; inset: 0; z-index: 0;
+      display: grid;
+      gap: var(--tile-gap);
+      padding: var(--tile-gap);
+      background: #0b0c10;
     }
-    .bg { opacity: 1; }
-    .bg2{ opacity: 0; }
+    .tile{
+      background: #10131c;
+      border-radius: var(--tile-radius);
+      overflow: hidden;
+      position: relative;
+    }
+    .tile img{
+      position: absolute; inset: 0;
+      width: 100%; height: 100%; object-fit: cover;
+      transform: scale(1.04);
+      transition: transform .3s ease, filter .3s ease, opacity .3s ease;
+      opacity: .94;
+      filter: saturate(1.05) contrast(1.02) brightness(.98);
+    }
+    .tile:hover img{ transform: scale(1.08); }
+
+    /* Subtle vignette for legibility */
     .vignette{
-      position: fixed; inset: 0; pointer-events: none;
+      position: fixed; inset: 0; z-index: 1; pointer-events: none;
       background: radial-gradient(80% 60% at 50% 40%, rgba(0,0,0,.0) 0%, rgba(0,0,0,.55) 100%);
     }
 
-    /* Foreground layout */
+    /* ===== FOREGROUND ===== */
     .wrap{
       position: relative; z-index: 2; height: 100%; width: 100%;
       display: grid; grid-template-rows: auto 1fr auto;
-      place-items: center; padding: 20px;
-      text-align: center;
+      place-items: center; padding: 20px; text-align: center;
     }
 
     header{
@@ -63,10 +79,10 @@
       font-size: clamp(1.4rem, 1rem + 2.6vw, 3rem);
       text-shadow: 0 2px 16px rgba(0,0,0,.55);
       justify-self: center;
+      pointer-events: none;
     }
     .controls{
-      grid-column: 3;
-      justify-self: end;
+      grid-column: 3; justify-self: end;
       display: flex; gap: 10px; align-items: center;
     }
     .btn{
@@ -76,7 +92,6 @@
       padding: 8px 12px; font-weight: 700;
       backdrop-filter: blur(6px);
     }
-    .btn[aria-pressed="true"]{ background: rgba(67,209,161,.28); border-color: rgba(67,209,161,.6); }
 
     .timer-card{
       background: var(--glass);
@@ -118,9 +133,9 @@
     }
     .lab{ margin-top: 6px; color: var(--muted); font-size: .95rem; }
 
-    footer{ height: 1px; } /* placeholder */
+    footer{ height: 1px; } /* no tip text */
 
-    /* Fullscreen adjustments */
+    /* Fullscreen: move timer down so wall is unobstructed */
     .fs-active header{ display: none; }
     .fs-active .timer-card{
       position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
@@ -128,64 +143,12 @@
       background: rgba(10,12,18,.28);
       border-color: rgba(255,255,255,.22);
     }
-
-    /* ===== PHOTO WALL EDGES ===== */
-    .edge{
-      position: fixed; z-index: 3; display: none;
-      backdrop-filter: blur(8px);
-    }
-    .edges-show .edge{ display: block; }
-
-    .edge .panel{
-      height: 100%; width: 100%;
-      background: rgba(6,8,12,.42);
-      border: 1px solid rgba(255,255,255,.18);
-      border-radius: 16px;
-      box-shadow: var(--shadow);
-      overflow: auto;
-      padding: 8px;
-      display: flex; gap: 8px; flex-wrap: nowrap;
-    }
-
-    /* Positions/sizes */
-    .edge.top    { left: 120px; right: 120px; top: 10px;  height: 92px; }
-    .edge.bottom { left: 120px; right: 120px; bottom: 10px; height: 92px; }
-    .edge.left   { left: 10px;  top: 120px; bottom: 120px; width: 92px; }
-    .edge.right  { right: 10px; top: 120px; bottom: 120px; width: 92px; }
-
-    .edge.top .panel, .edge.bottom .panel { flex-direction: row; }
-    .edge.left .panel, .edge.right .panel {
-      flex-direction: column;
-    }
-
-    .thumb{
-      display:block; border-radius: 10px; overflow:hidden;
-      border:2px solid transparent; background: #111; cursor:pointer;
-      flex: 0 0 auto;
-    }
-    .edge.top .thumb, .edge.bottom .thumb { width: 110px; height: 70px; }
-    .edge.left .thumb, .edge.right .thumb { width: 70px;  height: 110px; }
-
-    .thumb img{ width:100%; height:100%; object-fit: cover; display:block; }
-    .thumb[aria-current="true"]{ border-color: rgba(67,209,161,.9); }
-
-    @media (max-width: 900px){
-      .edge.top, .edge.bottom { left: 10px; right: 10px; }
-      .edge.left, .edge.right { top: 100px; bottom: 100px; }
-    }
   </style>
 </head>
 <body>
-  <!-- Background slideshow -->
-  <div class="bg" id="bg1" role="img" aria-label="Background photo"></div>
-  <div class="bg2" id="bg2" role="img" aria-label="Background photo (next)"></div>
+  <!-- Smart photo wall -->
+  <div class="wall" id="wall"></div>
   <div class="vignette" aria-hidden="true"></div>
-
-  <!-- Photo Wall edges -->
-  <aside class="edge top"><div class="panel" id="edgeTop"></div></aside>
-  <aside class="edge bottom"><div class="panel" id="edgeBottom"></div></aside>
-  <aside class="edge left"><div class="panel" id="edgeLeft"></div></aside>
-  <aside class="edge right"><div class="panel" id="edgeRight"></div></aside>
 
   <!-- Foreground -->
   <div class="wrap">
@@ -193,12 +156,12 @@
       <div></div>
       <h1>⏳ Guess whos back</h1>
       <div class="controls">
-        <button class="btn" id="thumbsBtn" aria-pressed="false" title="Toggle thumbnails">Thumbnails</button>
+        <button class="btn" id="shuffleBtn" title="Shuffle photos">Shuffle</button>
         <button class="btn" id="fsBtn" title="Fullscreen">Fullscreen</button>
       </div>
     </header>
 
-    <main class="timer-card" aria-live="polite" aria-label="Countdown">
+    <main class="timer-card" id="timerCard" aria-live="polite" aria-label="Countdown">
       <div class="label">Countdown to November 1, 2025 — 19:40</div>
       <div class="timer">
         <div class="tbox"><div class="num" id="days">00</div><div class="lab">Days</div></div>
@@ -214,7 +177,6 @@
   <script>
     // ===== CONFIG =====
     const DEFAULT_TARGET = new Date("2025-11-01T19:40:00+03:00");
-    const DEFAULT_LABEL  = "Guess whos back";
     const IMAGES = [
       { src: "images/IMG_20231224_192027.jpg", caption: "Photo 1" },
       { src: "images/IMG_20231224_192029.jpg", caption: "Photo 2" },
@@ -243,122 +205,127 @@
     }
     startCountdown(DEFAULT_TARGET);
 
-    // ===== Background slideshow =====
-    const bg1 = document.getElementById("bg1");
-    const bg2 = document.getElementById("bg2");
-    let idx = 0;
-    let onFirst = true;
-    let autoTimer = null;
-    const AUTO_MS = 6000;
+    // ===== Photo Wall logic =====
+    const wall = document.getElementById("wall");
+    const timerCard = document.getElementById("timerCard");
+    const shuffleBtn = document.getElementById("shuffleBtn");
+    const fsBtn = document.getElementById("fsBtn");
 
+    // Preload images
     IMAGES.forEach(i => { const im = new Image(); im.src = i.src; });
 
-    function setBG(div, i){
-      const it = IMAGES[(i + IMAGES.length) % IMAGES.length];
-      div.style.backgroundImage = `url('${it.src}')`;
-      div.setAttribute("aria-label", it.caption || "Background photo");
-    }
-
-    function show(i){
-      const next = (i + IMAGES.length) % IMAGES.length;
-      if (onFirst){
-        setBG(bg2, next);
-        bg2.style.opacity = 1;
-        bg1.style.opacity = 0;
-      } else {
-        setBG(bg1, next);
-        bg1.style.opacity = 1;
-        bg2.style.opacity = 0;
+    function shuffle(arr){
+      for(let i = arr.length-1; i > 0; i--){
+        const j = Math.floor(Math.random()*(i+1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
       }
-      onFirst = !onFirst;
-      idx = next;
-      updateThumbHighlight();
-      restartAuto();
+      return arr;
     }
 
-    function restartAuto(){
-      if (autoTimer) clearInterval(autoTimer);
-      autoTimer = setInterval(()=> show(idx+1), AUTO_MS);
+    function buildWall(){
+      // Figure out grid size based on target tile size
+      const W = window.innerWidth;
+      const H = window.innerHeight;
+      const gap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tile-gap")) || 6;
+      const target = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tile-target")) || 150;
+
+      const cols = Math.max(3, Math.floor((W - gap) / (target + gap)));
+      const rows = Math.max(3, Math.floor((H - gap) / (target + gap)));
+      const cellW = (W - gap*(cols+1)) / cols;
+      const cellH = (H - gap*(rows+1)) / rows;
+
+      wall.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+
+      // Get exclusion zone (timer box) as grid cells
+      const r = timerCard.getBoundingClientRect();
+      const padCellsX = 1; // keep at least 1 cell margin around timer
+      const padCellsY = 1;
+
+      const startCol = Math.max(0, Math.floor((r.left - gap) / (cellW + gap)) - padCellsX);
+      const endCol   = Math.min(cols-1, Math.floor((r.right - gap) / (cellW + gap)) + padCellsX);
+      const startRow = Math.max(0, Math.floor((r.top - gap) / (cellH + gap)) - padCellsY);
+      const endRow   = Math.min(rows-1, Math.floor((r.bottom - gap) / (cellH + gap)) + padCellsY);
+
+      // Build list of available cells (row-major)
+      const freeCells = [];
+      for(let row=0; row<rows; row++){
+        for(let col=0; col<cols; col++){
+          const insideExclusion = (col >= startCol && col <= endCol && row >= startRow && row <= endRow);
+          if(!insideExclusion) freeCells.push({row, col});
+        }
+      }
+
+      // Randomly place up to IMAGES.length tiles in available cells
+      wall.innerHTML = "";
+      const order = shuffle([...IMAGES]); // randomize image order
+      const cellsToUse = shuffle(freeCells).slice(0, order.length);
+
+      // For nice packing "next to each other", take a compact cluster nearest to center
+      // Sort chosen cells by distance to timer center to cluster them
+      const timerCx = (r.left + r.right)/2;
+      const timerCy = (r.top + r.bottom)/2;
+      cellsToUse.sort((a,b)=>{
+        const ax = (a.col + 0.5)*(cellW + gap) + gap;
+        const ay = (a.row + 0.5)*(cellH + gap) + gap;
+        const bx = (b.col + 0.5)*(cellW + gap) + gap;
+        const by = (b.row + 0.5)*(cellH + gap) + gap;
+        const da = Math.hypot(ax - timerCx, ay - timerCy);
+        const db = Math.hypot(bx - timerCx, by - timerCy);
+        return da - db;
+      });
+
+      // Create tiles
+      for(let i=0; i<cellsToUse.length; i++){
+        const {row, col} = cellsToUse[i];
+        const tile = document.createElement("div");
+        tile.className = "tile";
+        tile.style.gridColumn = (col + 1);
+        tile.style.gridRow = (row + 1);
+        const img = document.createElement("img");
+        img.src = order[i].src;
+        img.alt = order[i].caption || `Photo ${i+1}`;
+        img.loading = "lazy";
+        img.decoding = "async";
+        tile.appendChild(img);
+        tile.addEventListener("click", ()=> {
+          // Optional click behavior: bring this image to the front by reshuffling with it first
+          const clicked = order[i];
+          const rest = order.filter((_,k)=>k!==i);
+          const newOrder = [clicked, ...shuffle(rest)];
+          // Rebuild with same cells but new order
+          wall.querySelectorAll(".tile img").forEach((im, idx)=>{
+            if(newOrder[idx]) im.src = newOrder[idx].src;
+          });
+        });
+        wall.appendChild(tile);
+      }
+
+      // Fill the CSS grid with empty cells so spacing aligns (optional)
+      const used = new Set(cellsToUse.map(c=>`${c.row}:${c.col}`));
+      const totalCells = rows*cols;
+      // We only need placeholders if we want every cell in the grid to be a tile; but we prefer empty space.
+      // So we skip adding placeholders to keep background visible.
     }
 
-    setBG(bg1, 0);
-    restartAuto();
-
-    // Keyboard navigation
-    window.addEventListener("keydown", (e)=>{
-      if (e.key === "ArrowRight") show(idx+1);
-      if (e.key === "ArrowLeft")  show(idx-1);
+    // Initial build after first paint (so timer size is correct)
+    window.addEventListener("load", ()=> {
+      buildWall();
+      // Rebuild on resize and on font load changes
+      let t;
+      window.addEventListener("resize", ()=>{ clearTimeout(t); t = setTimeout(buildWall, 120); });
     });
 
-    // Touch swipe
-    let touchX = null;
-    window.addEventListener("touchstart", (e)=>{ touchX = e.touches[0].clientX; }, {passive:true});
-    window.addEventListener("touchend", (e)=>{
-      if (touchX == null) return;
-      const dx = e.changedTouches[0].clientX - touchX;
-      touchX = null;
-      if (Math.abs(dx) > 40){ dx > 0 ? show(idx-1) : show(idx+1); }
-    });
-
-    // ===== Fullscreen handling =====
-    const fsBtn = document.getElementById("fsBtn");
-    fsBtn.addEventListener("click", toggleFullscreen);
-    function toggleFullscreen(){
-      if (!document.fullscreenElement){
-        document.documentElement.requestFullscreen?.();
-      } else {
-        document.exitFullscreen?.();
-      }
-    }
-    document.addEventListener("fullscreenchange", ()=>{
+    // Rebuild when fullscreen toggles (timer moves, exclusion changes)
+    document.addEventListener("fullscreenchange", ()=> {
       document.body.classList.toggle("fs-active", !!document.fullscreenElement);
+      setTimeout(buildWall, 30);
     });
 
-    // ===== Photo Wall (edges) =====
-    const thumbsBtn = document.getElementById("thumbsBtn");
-    const edgeTop = document.getElementById("edgeTop");
-    const edgeBottom = document.getElementById("edgeBottom");
-    const edgeLeft = document.getElementById("edgeLeft");
-    const edgeRight = document.getElementById("edgeRight");
-
-    function buildEdges(){
-      // Clear
-      [edgeTop, edgeBottom, edgeLeft, edgeRight].forEach(n => n.innerHTML = "");
-      // Round-robin distribute across 4 edges for balance
-      IMAGES.forEach((it, i) => {
-        const thumb = makeThumb(it, i);
-        const mod = i % 4;
-        if (mod === 0) edgeTop.appendChild(thumb);
-        else if (mod === 1) edgeRight.appendChild(thumb);
-        else if (mod === 2) edgeBottom.appendChild(thumb);
-        else edgeLeft.appendChild(thumb);
-      });
-      updateThumbHighlight();
-    }
-
-    function makeThumb(it, i){
-      const a = document.createElement("a");
-      a.href = "#"; a.className = "thumb";
-      a.dataset.index = i;
-      a.setAttribute("aria-label", it.caption || `Image ${i+1}`);
-      const im = document.createElement("img");
-      im.src = it.src; im.alt = it.caption || `Image ${i+1}`;
-      a.appendChild(im);
-      a.addEventListener("click", (ev)=>{ ev.preventDefault(); show(i); });
-      return a;
-    }
-
-    function updateThumbHighlight(){
-      document.querySelectorAll(".thumb").forEach(el => {
-        const i = Number(el.dataset.index);
-        el.setAttribute("aria-current", i === idx);
-      });
-    }
-
-    thumbsBtn.addEventListener("click", ()=>{
-      const isOn = document.body.classList.toggle("edges-show");
-      thumbsBtn.setAttribute("aria-pressed", String(isOn));
-      if (isOn && !edgeTop.childElementCount) buildEdges();
+    // Controls
+    shuffleBtn.addEventListener("click", buildWall);
+    fsBtn.addEventListener("click", ()=>{
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+      else document.exitFullscreen?.();
     });
   </script>
 </body>
