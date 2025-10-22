@@ -8,160 +8,68 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23000'/%3E%3Ctext x='50' y='62' font-size='56' text-anchor='middle' fill='%23fff'%3E%F0%9F%95%9B%EF%B8%8F%3C/text%3E%3C/svg%3E" />
   <style>
     :root{
-      --text: #f4f7ff;
-      --muted: #b8c0d6;
-      --glass: rgba(10,12,18,.36);
-      --ring: rgba(255,255,255,.28);
-      --shadow: 0 20px 60px rgba(0,0,0,.55);
-      --radius: 18px;
-
-      /* Photo wall tuning */
-      --tile-gap: 6px;
-      --tile-target: 150px; /* desired tile size */
-      --tile-radius: 10px;
-      --coverage: 0.60;     /* 40% of the total grid area */
-      --guard-cells: 1;     /* padding cells around the timer exclusion zone */
+      --text:#f4f7ff; --muted:#b8c0d6; --glass:rgba(10,12,18,.36);
+      --ring:rgba(255,255,255,.28); --shadow:0 20px 60px rgba(0,0,0,.55);
+      --radius:18px;
+      --tile-gap:6px; --tile-target:150px; --tile-radius:10px;
+      --coverage:0.60; --guard-cells:1;
     }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
+    *{box-sizing:border-box}
+    html,body{height:100%}
     body{
-      margin: 0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
-      color: var(--text);
-      background: #0b0c10;
-      overflow: hidden;
-      -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+      margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;
+      color:var(--text); background:#0b0c10; overflow:hidden;
+      -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
     }
 
     /* ===== Full-screen slideshow (visible only in fullscreen) ===== */
-    .bg, .bg2{
-      position: fixed; inset: 0; z-index: 0;
-      background-position: center;
-      background-size: cover;
-      background-repeat: no-repeat;
-      filter: brightness(.56) saturate(1.05);
-      transition: opacity 1.1s ease;
-      display: none; /* hidden in normal mode */
+    .bg,.bg2{
+      position:fixed; inset:0; z-index:0;
+      background-position:center;
+      background-repeat:no-repeat;
+      /* Default to FIT (no cropping) */
+      background-size:contain;
+      background-color:#000;            /* letterbox bars look clean */
+      filter:brightness(.88) saturate(1.02);
+      transition:opacity 1.1s ease;
+      display:none;
     }
-    .bg { opacity: 1; }
-    .bg2{ opacity: 0; }
-    .fs-active .bg, .fs-active .bg2{ display: block; }
+    /* Switch to FILL mode when desired */
+    .fill-mode .bg, .fill-mode .bg2{ background-size:cover; filter:brightness(.56) saturate(1.05); }
+    .bg{opacity:1}
+    .bg2{opacity:0}
+    .fs-active .bg, .fs-active .bg2{display:block}
 
     /* ===== Photo Wall (hidden in fullscreen) ===== */
-    .wall{
-      position: fixed; inset: 0; z-index: 0;
-      display: grid;
-      gap: var(--tile-gap);
-      padding: var(--tile-gap);
-      background: #0b0c10;
-    }
-    .fs-active .wall{ display: none; }
+    .wall{position:fixed; inset:0; z-index:0; display:grid; gap:var(--tile-gap); padding:var(--tile-gap); background:#0b0c10}
+    .fs-active .wall{display:none}
+    .tile{background:#10131c; border-radius:var(--tile-radius); overflow:hidden; position:relative}
+    .tile img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scale(1.04); transition:transform .25s ease,opacity .25s ease,filter .25s ease; opacity:.96; filter:saturate(1.05) contrast(1.02) brightness(.98)}
+    .tile:hover img{transform:scale(1.08)}
 
-    .tile{
-      background: #10131c;
-      border-radius: var(--tile-radius);
-      overflow: hidden;
-      position: relative;
-    }
-    .tile img{
-      position: absolute; inset: 0;
-      width: 100%; height: 100%; object-fit: cover;
-      transform: scale(1.04);
-      transition: transform .25s ease, opacity .25s ease, filter .25s ease;
-      opacity: .96;
-      filter: saturate(1.05) contrast(1.02) brightness(.98);
-    }
-    .tile:hover img{ transform: scale(1.08); }
-
-    /* Vignette for legibility */
-    .vignette{
-      position: fixed; inset: 0; z-index: 1; pointer-events: none;
-      background: radial-gradient(80% 60% at 50% 40%, rgba(0,0,0,.0) 0%, rgba(0,0,0,.55) 100%);
-    }
+    .vignette{position:fixed; inset:0; z-index:1; pointer-events:none; background:radial-gradient(80% 60% at 50% 40%, rgba(0,0,0,.0) 0%, rgba(0,0,0,.55) 100%)}
 
     /* ===== Foreground (header + timer) ===== */
-    .wrap{
-      position: relative; z-index: 2; height: 100%; width: 100%;
-      display: grid; grid-template-rows: auto 1fr auto;
-      place-items: center; padding: 20px; text-align: center;
-    }
+    .wrap{position:relative; z-index:2; height:100%; width:100%; display:grid; grid-template-rows:auto 1fr auto; place-items:center; padding:20px; text-align:center}
+    header{width:100%; display:grid; grid-template-columns:1fr auto 1fr; align-items:center}
+    h1{grid-column:2; margin:0; font-weight:800; letter-spacing:.4px; font-size:clamp(1.4rem,1rem + 2.6vw,3rem); text-shadow:0 2px 16px rgba(0,0,0,.55); justify-self:center; pointer-events:none}
+    .controls{grid-column:3; justify-self:end; display:flex; gap:10px; align-items:center}
+    .btn{appearance:none; border:1px solid rgba(255,255,255,.2); cursor:pointer; background:rgba(255,255,255,.12); color:var(--text); border-radius:999px; padding:8px 12px; font-weight:700; backdrop-filter:blur(6px)}
 
-    header{
-      width: 100%;
-      display: grid; grid-template-columns: 1fr auto 1fr;
-      align-items: center;
-    }
-    h1{
-      grid-column: 2;
-      margin: 0;
-      font-weight: 800;
-      letter-spacing: .4px;
-      font-size: clamp(1.4rem, 1rem + 2.6vw, 3rem);
-      text-shadow: 0 2px 16px rgba(0,0,0,.55);
-      justify-self: center;
-      pointer-events: none;
-    }
-    .controls{
-      grid-column: 3; justify-self: end;
-      display: flex; gap: 10px; align-items: center;
-    }
-    .btn{
-      appearance: none; border: 1px solid rgba(255,255,255,.2);
-      cursor: pointer; background: rgba(255,255,255,.12);
-      color: var(--text); border-radius: 999px;
-      padding: 8px 12px; font-weight: 700;
-      backdrop-filter: blur(6px);
-    }
+    .timer-card{background:var(--glass); -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px); border:1px solid var(--ring); border-radius:var(--radius); box-shadow:var(--shadow); padding:clamp(14px,2vw,22px); max-width:min(920px,92vw); width:100%; transition:all .25s ease}
+    .label{color:var(--muted); font-size:.95rem; margin-bottom:8px}
+    .timer{display:grid; grid-template-columns:repeat(4, minmax(90px, 1fr)); gap:clamp(8px,2vw,16px)}
+    @media (max-width:560px){.timer{grid-template-columns:repeat(2, minmax(120px, 1fr))}}
+    .tbox{background:rgba(8,10,16,.55); border:1px solid rgba(255,255,255,.18); border-radius:14px; padding:clamp(12px,2.2vw,18px); text-align:center}
+    .num{font-variant-numeric:tabular-nums; font-weight:900; font-size:clamp(2rem,5.5vw,3.2rem); line-height:1.1; letter-spacing:.6px}
+    .lab{margin-top:6px; color:var(--muted); font-size:.95rem}
+    footer{height:1px}
 
-    .timer-card{
-      background: var(--glass);
-      -webkit-backdrop-filter: blur(10px);
-      backdrop-filter: blur(10px);
-      border: 1px solid var(--ring);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: clamp(14px, 2vw, 22px);
-      max-width: min(920px, 92vw);
-      width: 100%;
-      transition: all .25s ease;
-    }
-    .label{
-      color: var(--muted);
-      font-size: .95rem;
-      margin-bottom: 8px;
-    }
-    .timer{
-      display: grid;
-      grid-template-columns: repeat(4, minmax(90px, 1fr));
-      gap: clamp(8px, 2vw, 16px);
-    }
-    @media (max-width: 560px){
-      .timer{ grid-template-columns: repeat(2, minmax(120px, 1fr)); }
-    }
-    .tbox{
-      background: rgba(8,10,16,.55);
-      border: 1px solid rgba(255,255,255,.18);
-      border-radius: 14px;
-      padding: clamp(12px, 2.2vw, 18px);
-      text-align: center;
-    }
-    .num{
-      font-variant-numeric: tabular-nums;
-      font-weight: 900;
-      font-size: clamp(2rem, 5.5vw, 3.2rem);
-      line-height: 1.1; letter-spacing: .6px;
-    }
-    .lab{ margin-top: 6px; color: var(--muted); font-size: .95rem; }
-
-    footer{ height: 1px; } /* blank */
-
-    /* Fullscreen: single slideshow & move timer down */
-    .fs-active header{ display: none; }
+    /* Fullscreen: move timer down */
+    .fs-active header{display:none}
     .fs-active .timer-card{
-      position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
-      max-width: min(760px, 94vw);
-      background: rgba(10,12,18,.28);
-      border-color: rgba(255,255,255,.22);
+      position:fixed; left:50%; bottom:20px; transform:translateX(-50%);
+      max-width:min(760px,94vw); background:rgba(10,12,18,.28); border-color:rgba(255,255,255,.22)
     }
   </style>
 </head>
@@ -182,6 +90,7 @@
       <h1>⏳ Guess whos back</h1>
       <div class="controls">
         <button class="btn" id="shuffleBtn" title="Shuffle wall">Shuffle</button>
+        <button class="btn" id="fitBtn" title="Toggle Fit/Fill">Fit</button>
         <button class="btn" id="fsBtn" title="Fullscreen">Fullscreen</button>
       </div>
     </header>
@@ -202,8 +111,6 @@
   <script>
     // ===== CONFIG =====
     const DEFAULT_TARGET = new Date("2025-11-01T19:40:00+03:00");
-
-    // Your images (auto-generated list you pasted)
     const IMAGES = [
       { src: "images/IMG_20161229_204822.jpg", caption: "IMG_20161229_204822" },
       { src: "images/IMG_20170709_123029.jpg", caption: "IMG_20170709_123029" },
@@ -227,211 +134,157 @@
     ];
 
     // ===== Countdown =====
-    const pad = (n) => String(n).padStart(2, "0");
-    let cdInterval = null;
+    const pad = n => String(n).padStart(2,"0");
+    let cdInterval=null;
     function startCountdown(targetDate){
-      if (cdInterval) clearInterval(cdInterval);
+      if(cdInterval) clearInterval(cdInterval);
       function tick(){
-        const now = new Date();
-        let diff = Math.max(0, targetDate - now);
-        const d = Math.floor(diff / 86400000); diff -= d * 86400000;
-        const h = Math.floor(diff / 3600000);  diff -= h * 3600000;
-        const m = Math.floor(diff / 60000);    diff -= m * 60000;
-        const s = Math.floor(diff / 1000);
-        document.getElementById("days").textContent  = pad(d);
-        document.getElementById("hours").textContent = pad(h);
-        document.getElementById("mins").textContent  = pad(m);
-        document.getElementById("secs").textContent  = pad(s);
+        const now=new Date(); let diff=Math.max(0,targetDate-now);
+        const d=Math.floor(diff/86400000); diff-=d*86400000;
+        const h=Math.floor(diff/3600000);  diff-=h*3600000;
+        const m=Math.floor(diff/60000);    diff-=m*60000;
+        const s=Math.floor(diff/1000);
+        days.textContent=pad(d); hours.textContent=pad(h); mins.textContent=pad(m); secs.textContent=pad(s);
       }
-      tick();
-      cdInterval = setInterval(tick, 1000);
+      const days=document.getElementById("days"), hours=document.getElementById("hours"),
+            mins=document.getElementById("mins"), secs=document.getElementById("secs");
+      tick(); cdInterval=setInterval(tick,1000);
     }
     startCountdown(DEFAULT_TARGET);
 
-    // ===== Utilities =====
-    const wall = document.getElementById("wall");
-    const timerCard = document.getElementById("timerCard");
-    const shuffleBtn = document.getElementById("shuffleBtn");
-    const fsBtn = document.getElementById("fsBtn");
-    const bg1 = document.getElementById("bg1");
-    const bg2 = document.getElementById("bg2");
+    // ===== Elements
+    const wall=document.getElementById("wall");
+    const timerCard=document.getElementById("timerCard");
+    const shuffleBtn=document.getElementById("shuffleBtn");
+    const fsBtn=document.getElementById("fsBtn");
+    const fitBtn=document.getElementById("fitBtn");
+    const bg1=document.getElementById("bg1");
+    const bg2=document.getElementById("bg2");
 
-    // Preload images
-    IMAGES.forEach(i => { const im = new Image(); im.src = i.src; });
+    // Preload
+    IMAGES.forEach(i=>{const im=new Image(); im.src=i.src;});
 
-    // --- Blue-noise style selection: pick cells evenly across the grid
-    function pickEvenlySpacedCells(freeCells, desired, cols, rows) {
-      if (!freeCells.length || desired <= 0) return [];
-      // Seed: farthest from center
-      const cx = (cols - 1) / 2, cy = (rows - 1) / 2;
-      let seed = freeCells[0], bestSeedScore = -1;
-      for (const c of freeCells) {
-        const dx = c.col - cx, dy = c.row - cy;
-        const score = dx*dx + dy*dy;
-        if (score > bestSeedScore) { bestSeedScore = score; seed = c; }
-      }
-      const selected = [seed];
-      while (selected.length < desired && selected.length < freeCells.length) {
-        let bestCell = null, bestDist = -1;
-        for (const c of freeCells) {
-          if (selected.some(s => s.col === c.col && s.row === c.row)) continue;
-          let minD2 = Infinity;
-          for (const s of selected) {
-            const dx = c.col - s.col, dy = c.row - s.row;
-            const d2 = dx*dx + dy*dy;
-            if (d2 < minD2) minD2 = d2;
-          }
-          if (minD2 > bestDist) { bestDist = minD2; bestCell = c; }
+    // --- Blue-noise cell picking
+    function pickEvenlySpacedCells(freeCells, desired, cols, rows){
+      if(!freeCells.length||desired<=0) return [];
+      const cx=(cols-1)/2, cy=(rows-1)/2;
+      let seed=freeCells[0], best=-1;
+      for(const c of freeCells){ const dx=c.col-cx, dy=c.row-cy, s=dx*dx+dy*dy; if(s>best){best=s; seed=c;} }
+      const selected=[seed];
+      while(selected.length<desired && selected.length<freeCells.length){
+        let bestCell=null, bestDist=-1;
+        for(const c of freeCells){
+          if(selected.some(s=>s.col===c.col && s.row===c.row)) continue;
+          let minD2=Infinity;
+          for(const s of selected){ const dx=c.col-s.col, dy=c.row-s.row, d2=dx*dx+dy*dy; if(d2<minD2) minD2=d2; }
+          if(minD2>bestDist){ bestDist=minD2; bestCell=c; }
         }
-        if (!bestCell) break;
-        selected.push(bestCell);
+        if(!bestCell) break; selected.push(bestCell);
       }
       return selected;
     }
+    function shuffleInPlace(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} return a; }
 
-    function shuffleInPlace(a){
-      for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
-      return a;
-    }
-
-    // ===== Photo Wall (40% coverage, repeats images if needed) =====
+    // ===== Photo Wall
     function buildWall(){
-      const W = window.innerWidth;
-      const H = window.innerHeight;
-      const cs = getComputedStyle(document.documentElement);
-      const gap = parseFloat(cs.getPropertyValue("--tile-gap")) || 6;
-      const target = parseFloat(cs.getPropertyValue("--tile-target")) || 150;
-      const coverage = Math.max(0, Math.min(1, parseFloat(cs.getPropertyValue("--coverage")) || 0.4));
-      const guard = parseInt(cs.getPropertyValue("--guard-cells")) || 1;
+      const W=innerWidth, H=innerHeight, cs=getComputedStyle(document.documentElement);
+      const gap=parseFloat(cs.getPropertyValue("--tile-gap"))||6;
+      const target=parseFloat(cs.getPropertyValue("--tile-target"))||150;
+      const coverage=Math.max(0,Math.min(1,parseFloat(cs.getPropertyValue("--coverage"))||0.4));
+      const guard=parseInt(cs.getPropertyValue("--guard-cells"))||1;
 
-      const cols = Math.max(3, Math.floor((W - gap) / (target + gap)));
-      const rows = Math.max(3, Math.floor((H - gap) / (target + gap)));
-      const cellW = (W - gap*(cols+1)) / cols;
-      const cellH = (H - gap*(rows+1)) / rows;
+      const cols=Math.max(3,Math.floor((W-gap)/(target+gap)));
+      const rows=Math.max(3,Math.floor((H-gap)/(target+gap)));
+      const cellW=(W-gap*(cols+1))/cols, cellH=(H-gap*(rows+1))/rows;
+      wall.style.gridTemplateColumns=`repeat(${cols},1fr)`;
 
-      wall.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+      const r=timerCard.getBoundingClientRect();
+      const startCol=Math.max(0,Math.floor((r.left-gap)/(cellW+gap))-guard);
+      const endCol=Math.min(cols-1,Math.floor((r.right-gap)/(cellW+gap))+guard);
+      const startRow=Math.max(0,Math.floor((r.top-gap)/(cellH+gap))-guard);
+      const endRow=Math.min(rows-1,Math.floor((r.bottom-gap)/(cellH+gap))+guard);
 
-      // Exclusion zone around timer (grid cells)
-      const r = timerCard.getBoundingClientRect();
-      const startCol = Math.max(0, Math.floor((r.left - gap) / (cellW + gap)) - guard);
-      const endCol   = Math.min(cols-1, Math.floor((r.right - gap) / (cellW + gap)) + guard);
-      const startRow = Math.max(0, Math.floor((r.top - gap) / (cellH + gap)) - guard);
-      const endRow   = Math.min(rows-1, Math.floor((r.bottom - gap) / (cellH + gap)) + guard);
-
-      // Free cells
-      const freeCells = [];
+      const free=[];
       for(let row=0; row<rows; row++){
         for(let col=0; col<cols; col++){
-          const inside = (col >= startCol && col <= endCol && row >= startRow && row <= endRow);
-          if(!inside) freeCells.push({row, col});
+          const inside=(col>=startCol && col<=endCol && row>=startRow && row<=endRow);
+          if(!inside) free.push({row,col});
         }
       }
 
-      const totalCells = rows * cols;
-      const desired = Math.min(freeCells.length, Math.max(1, Math.round(totalCells * coverage)));
+      const total=rows*cols;
+      const desired=Math.min(free.length, Math.max(1, Math.round(total*coverage)));
 
-      // Prepare images: repeat to reach desired count
-      const seq = [];
-      while (seq.length < desired) seq.push(...IMAGES);
-      const chosenImages = shuffleInPlace(seq).slice(0, desired);
+      const seq=[]; while(seq.length<desired) seq.push(...IMAGES);
+      const imgs=shuffleInPlace(seq).slice(0,desired);
+      const cells=pickEvenlySpacedCells(free, desired, cols, rows);
 
-      // Even-spread selection of cells
-      const cellsToUse = pickEvenlySpacedCells(freeCells, desired, cols, rows);
-
-      // Render wall
-      wall.innerHTML = "";
-      for(let i=0; i<cellsToUse.length; i++){
-        const {row, col} = cellsToUse[i];
-        const tile = document.createElement("div");
-        tile.className = "tile";
-        tile.style.gridColumn = (col + 1);
-        tile.style.gridRow = (row + 1);
-        const img = document.createElement("img");
-        img.src = chosenImages[i].src;
-        img.alt = chosenImages[i].caption || `Photo ${i+1}`;
-        img.loading = "lazy";
-        img.decoding = "async";
-        tile.appendChild(img);
-        wall.appendChild(tile);
+      wall.innerHTML="";
+      for(let i=0;i<cells.length;i++){
+        const {row,col}=cells[i];
+        const t=document.createElement("div"); t.className="tile";
+        t.style.gridColumn=(col+1); t.style.gridRow=(row+1);
+        const img=document.createElement("img"); img.src=imgs[i].src; img.alt=imgs[i].caption||`Photo ${i+1}`;
+        img.loading="lazy"; img.decoding="async";
+        t.appendChild(img); wall.appendChild(t);
       }
     }
-
-    // Rebuild wall on resize (debounced)
-    let resizeT;
-    function rebuildWallSoon(){
-      clearTimeout(resizeT);
-      resizeT = setTimeout(buildWall, 100);
-    }
-    window.addEventListener("load", buildWall);
-    window.addEventListener("resize", rebuildWallSoon);
-
+    let resizeT; function rebuildWallSoon(){ clearTimeout(resizeT); resizeT=setTimeout(buildWall,100); }
+    addEventListener("load", buildWall); addEventListener("resize", rebuildWallSoon);
     shuffleBtn.addEventListener("click", buildWall);
 
-    // ===== Full-screen slideshow (single image, cross-fade) =====
-    let slideIdx = 0;
-    let onFirst = true;
-    let autoTimer = null;
-    const AUTO_MS = 6000;
+    // ===== Fullscreen slideshow (with Fit/Fill toggle)
+    let slideIdx=0, onFirst=true, autoTimer=null; const AUTO_MS=6000;
 
     function setBG(div, i){
-      const it = IMAGES[(i + IMAGES.length) % IMAGES.length];
-      div.style.backgroundImage = `url('${it.src}')`;
-      div.setAttribute("aria-label", it.caption || "Background photo");
+      const it=IMAGES[(i+IMAGES.length)%IMAGES.length];
+      div.style.backgroundImage=`url('${it.src}')`;
+      div.setAttribute("aria-label", it.caption||"Background photo");
     }
     function showNext(){
-      const next = (slideIdx + 1) % IMAGES.length;
-      if (onFirst){
-        setBG(bg2, next);
-        bg2.style.opacity = 1;
-        bg1.style.opacity = 0;
-      } else {
-        setBG(bg1, next);
-        bg1.style.opacity = 1;
-        bg2.style.opacity = 0;
-      }
-      onFirst = !onFirst;
-      slideIdx = next;
+      const next=(slideIdx+1)%IMAGES.length;
+      if(onFirst){ setBG(bg2,next); bg2.style.opacity=1; bg1.style.opacity=0; }
+      else       { setBG(bg1,next); bg1.style.opacity=1; bg2.style.opacity=0; }
+      onFirst=!onFirst; slideIdx=next;
     }
-	function startSlideshow(){
-	  if (!IMAGES.length) return;
-	  // Randomize order each time fullscreen starts
-	  shuffleInPlace(IMAGES);
-	  setBG(bg1, 0);
-	  if (autoTimer) clearInterval(autoTimer);
-	  autoTimer = setInterval(showNext, AUTO_MS);
-	}
-    function restartAuto(){
-      if (autoTimer){ clearInterval(autoTimer); autoTimer = setInterval(showNext, AUTO_MS); }
+    function startSlideshow(){
+      if(!IMAGES.length) return;
+      shuffleInPlace(IMAGES);              // randomize each time fullscreen starts
+      setBG(bg1,0);
+      if(autoTimer) clearInterval(autoTimer);
+      autoTimer=setInterval(showNext,AUTO_MS);
     }
+    function restartAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=setInterval(showNext,AUTO_MS);} }
 
-    // Keyboard nav (only meaningful in fullscreen)
-    window.addEventListener("keydown", (e)=>{
-      if (!document.fullscreenElement) return;
-      if (e.key === "ArrowRight") { showNext(); restartAuto(); }
-      if (e.key === "ArrowLeft")  {
-        const prev = (slideIdx - 1 + IMAGES.length) % IMAGES.length;
-        if (onFirst){ setBG(bg2, prev); bg2.style.opacity = 1; bg1.style.opacity = 0; }
-        else        { setBG(bg1, prev); bg1.style.opacity = 1; bg2.style.opacity = 0; }
-        onFirst = !onFirst;
-        slideIdx = prev;
-        restartAuto();
+    // Keyboard nav (fullscreen)
+    addEventListener("keydown", e=>{
+      if(!document.fullscreenElement) return;
+      if(e.key==="ArrowRight"){ showNext(); restartAuto(); }
+      if(e.key==="ArrowLeft"){
+        const prev=(slideIdx-1+IMAGES.length)%IMAGES.length;
+        if(onFirst){ setBG(bg2,prev); bg2.style.opacity=1; bg1.style.opacity=0; }
+        else       { setBG(bg1,prev); bg1.style.opacity=1; bg2.style.opacity=0; }
+        onFirst=!onFirst; slideIdx=prev; restartAuto();
       }
     });
 
-    // Fullscreen toggling
+    // Fullscreen & Fit/Fill controls
     fsBtn.addEventListener("click", ()=>{
-      if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+      if(!document.fullscreenElement) document.documentElement.requestFullscreen?.();
       else document.exitFullscreen?.();
+    });
+    fitBtn.addEventListener("click", ()=>{
+      // Toggle fill/fit mode (fit = default). Works in or out of fullscreen, but useful in fullscreen.
+      const filling = document.body.classList.toggle("fill-mode");
+      fitBtn.textContent = filling ? "Fill" : "Fit"; // button shows current mode name
     });
 
     document.addEventListener("fullscreenchange", ()=>{
-      const fs = !!document.fullscreenElement;
+      const fs=!!document.fullscreenElement;
       document.body.classList.toggle("fs-active", fs);
-      if (fs){
-        startSlideshow();
-      } else {
-        if (autoTimer) clearInterval(autoTimer);
-        // Timer returns to center; rebuild wall so tiles can occupy that space again
+      if(fs){ startSlideshow(); }
+      else{
+        if(autoTimer) clearInterval(autoTimer);
         setTimeout(buildWall, 30);
       }
     });
