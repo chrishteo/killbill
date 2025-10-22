@@ -392,12 +392,14 @@
       onFirst = !onFirst;
       slideIdx = next;
     }
-    function startSlideshow(){
-      if (!IMAGES.length) return;
-      setBG(bg1, 0);
-      if (autoTimer) clearInterval(autoTimer);
-      autoTimer = setInterval(showNext, AUTO_MS);
-    }
+	function startSlideshow(){
+	  if (!IMAGES.length) return;
+	  // Randomize order each time fullscreen starts
+	  shuffleInPlace(IMAGES);
+	  setBG(bg1, 0);
+	  if (autoTimer) clearInterval(autoTimer);
+	  autoTimer = setInterval(showNext, AUTO_MS);
+	}
     function restartAuto(){
       if (autoTimer){ clearInterval(autoTimer); autoTimer = setInterval(showNext, AUTO_MS); }
     }
