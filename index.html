@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Countdown</title>
-  <meta name="description" content="Countdown with an evenly-spread photo wall and full-screen slideshow." />
+  <meta name="description" content="Countdown with an evenly-spread rotating photo wall and full-screen slideshow." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23000'/%3E%3Ctext x='50' y='62' font-size='56' text-anchor='middle' fill='%23fff'%3E%F0%9F%95%9B%EF%B8%8F%3C/text%3E%3C/svg%3E" />
   <style>
     :root{
@@ -17,15 +17,13 @@
       --tile-target:150px;   /* desired tile size */
       --tile-radius:10px;
       --coverage:0.60;       /* ~60% of grid filled */
-      --guard-cells:1;       /* safety ring (grid cells) around timer */
+      --guard-cells:1;       /* safety ring around timer */
     }
-
-    /* Mobile-friendly tweaks */
     @media (max-width: 640px){
       :root{
-        --tile-target:92px;   /* smaller tiles on phones */
-        --coverage:0.45;      /* a bit less density for clarity */
-        --guard-cells:0;      /* allow tiles closer to timer */
+        --tile-target:92px;
+        --coverage:0.45;
+        --guard-cells:0;
       }
     }
 
@@ -42,9 +40,8 @@
       position:fixed; inset:0; z-index:0;
       background-position:center;
       background-repeat:no-repeat;
-      /* LOCKED to FIT (contain) so nothing is cropped */
-      background-size:contain;
-      background-color:#000;            /* letterbox bars */
+      background-size:contain;          /* FIT (no cropping) */
+      background-color:#000;
       filter:brightness(.88) saturate(1.02);
       transition:opacity 1.1s ease;
       display:none;
@@ -57,7 +54,12 @@
     .wall{position:fixed; inset:0; z-index:0; display:grid; gap:var(--tile-gap); padding:var(--tile-gap); background:#0b0c10}
     .fs-active .wall{display:none}
     .tile{background:#10131c; border-radius:var(--tile-radius); overflow:hidden; position:relative}
-    .tile img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scale(1.04); transition:transform .25s ease,opacity .25s ease,filter .25s ease; opacity:.96; filter:saturate(1.05) contrast(1.02) brightness(.98)}
+    .tile img{
+      position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+      transform:scale(1.04);
+      transition:transform .25s ease, opacity .35s ease, filter .25s ease;
+      opacity:.96; filter:saturate(1.05) contrast(1.02) brightness(.98)
+    }
     .tile:hover img{transform:scale(1.08)}
 
     .vignette{position:fixed; inset:0; z-index:1; pointer-events:none; background:radial-gradient(80% 60% at 50% 40%, rgba(0,0,0,.0) 0%, rgba(0,0,0,.55) 100%)}
@@ -102,7 +104,7 @@
       <div></div>
       <h1>⏳ Guess whos back</h1>
       <div class="controls">
-        <button class="btn" id="shuffleBtn" title="Shuffle wall">Shuffle</button>
+        <button class="btn" id="shuffleBtn" title="Rebuild wall">Shuffle</button>
         <button class="btn" id="fsBtn" title="Fullscreen">Fullscreen</button>
       </div>
     </header>
@@ -123,6 +125,11 @@
   <script>
     // ===== CONFIG =====
     const DEFAULT_TARGET = new Date("2025-11-01T19:40:00+03:00");
+    // Rotating wall settings
+    const ROTATE_MS = 6000;       // how often to rotate some tiles
+    const ROTATE_BATCH = 3;       // how many tiles swap per tick
+    const PAUSE_ON_HOVER = true;  // don't swap a tile if it's hovered
+
     const IMAGES = [
       { src: "images/IMG_20161229_204822.jpg", caption: "IMG_20161229_204822" },
       { src: "images/IMG_20170709_123029.jpg", caption: "IMG_20170709_123029" },
@@ -172,10 +179,10 @@
     const bg1=document.getElementById("bg1");
     const bg2=document.getElementById("bg2");
 
-    // Preload
+    // Preload (optional; browser will cache as they load during rotation)
     IMAGES.forEach(i=>{const im=new Image(); im.src=i.src;});
 
-    // --- Blue-noise cell picking
+    // --- Blue-noise cell picking (even spread)
     function pickEvenlySpacedCells(freeCells, desired, cols, rows){
       if(!freeCells.length||desired<=0) return [];
       const cx=(cols-1)/2, cy=(rows-1)/2;
@@ -196,14 +203,19 @@
     }
     function shuffleInPlace(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} return a; }
 
-    // ===== Photo Wall (mobile-safe: auto-relax guard if needed) =====
+    // ===== Photo Wall (with rotation) =====
+    let tiles = [];                    // [{ el, imgEl, imgIndex }]
+    let visibleSet = new Set();        // image indexes currently on screen
+    let pool = [];                     // image indexes available to rotate in
+    let rotateTimer = null;
+    const lastSwapAt = new Map();      // tile -> timestamp to avoid rapid re-swap
+
     function computeFreeCells(cols, rows, gap, cellW, cellH, guard){
       const r=timerCard.getBoundingClientRect();
       const startCol=Math.max(0,Math.floor((r.left-gap)/(cellW+gap))-guard);
       const endCol=Math.min(cols-1,Math.floor((r.right-gap)/(cellW+gap))+guard);
       const startRow=Math.max(0,Math.floor((r.top-gap)/(cellH+gap))-guard);
       const endRow=Math.min(rows-1,Math.floor((r.bottom-gap)/(cellH+gap))+guard);
-
       const free=[];
       for(let row=0; row<rows; row++){
         for(let col=0; col<cols; col++){
@@ -214,62 +226,152 @@
       return free;
     }
 
+    function stopWallRotation(){
+      if(rotateTimer){ clearInterval(rotateTimer); rotateTimer=null; }
+    }
+
+    function startWallRotation(){
+      stopWallRotation();
+      if(pool.length === 0) return; // nothing to rotate in
+      rotateTimer = setInterval(rotateSomeTiles, ROTATE_MS);
+    }
+
+    function rotateSomeTiles(){
+      if(pool.length === 0 || tiles.length === 0) return;
+
+      const now = performance.now();
+      // Build a candidate list of tile indices we can swap
+      const candidates = tiles
+        .map((t, i) => ({t, i}))
+        .filter(({t})=>{
+          if(PAUSE_ON_HOVER && t.el.matches(':hover')) return false;
+          const last = lastSwapAt.get(t.el) || 0;
+          return (now - last) > ROTATE_MS * 1.2; // cool-down
+        });
+
+      if(candidates.length === 0) return;
+
+      shuffleInPlace(candidates);
+      const swaps = Math.min(ROTATE_BATCH, candidates.length, pool.length);
+      for(let k=0; k<swaps; k++){
+        const {t, i: tileIndex} = candidates[k];
+        // Take next new image that's not currently visible
+        // (pool should already contain non-visible, but guard just in case)
+        let nextIdx = pool.shift();
+        if(nextIdx == null) break;
+        if(visibleSet.has(nextIdx)){
+          // find a truly non-visible one
+          let found = -1;
+          for(let j=0;j<pool.length;j++){
+            if(!visibleSet.has(pool[j])){ found = j; break; }
+          }
+          if(found >= 0){
+            // put back the duplicate and take the found one
+            pool.push(nextIdx);
+            nextIdx = pool.splice(found, 1)[0];
+          }else{
+            // fallback: use it anyway
+          }
+        }
+
+        // Move the old one back into the pool tail
+        if(Number.isInteger(t.imgIndex)){
+          visibleSet.delete(t.imgIndex);
+          pool.push(t.imgIndex);
+        }
+        // Apply new image with a tiny fade
+        t.imgEl.style.opacity = 0;
+        const newImg = IMAGES[nextIdx];
+        setTimeout(()=>{
+          t.imgEl.src = newImg.src;
+          t.imgEl.alt = newImg.caption || "Photo";
+          t.imgEl.onload = ()=>{ t.imgEl.style.opacity = .96; };
+        }, 150);
+
+        t.imgIndex = nextIdx;
+        visibleSet.add(nextIdx);
+        lastSwapAt.set(t.el, now);
+      }
+    }
+
     function buildWall(){
+      // grid sizing
       const W=innerWidth, H=innerHeight, cs=getComputedStyle(document.documentElement);
       const gap=parseFloat(cs.getPropertyValue("--tile-gap"))||6;
       const target=parseFloat(cs.getPropertyValue("--tile-target"))||150;
-      const coverageBase=Math.max(0,Math.min(1,parseFloat(cs.getPropertyValue("--coverage"))||0.4));
+      const coverageBase=Math.max(0,Math.min(1,parseFloat(cs.getPropertyValue("--coverage"))||0.6));
       const guardBase=parseInt(cs.getPropertyValue("--guard-cells"))||0;
 
-      const cols=Math.max(2,Math.floor((W-gap)/(target+gap)));        // allow as low as 2 on small screens
+      const cols=Math.max(2,Math.floor((W-gap)/(target+gap)));
       const rows=Math.max(2,Math.floor((H-gap)/(target+gap)));
       const cellW=(W-gap*(cols+1))/cols, cellH=(H-gap*(rows+1))/rows;
       wall.style.gridTemplateColumns=`repeat(${cols},1fr)`;
 
-      // Try with configured guard first
+      // exclusion
       let guard=guardBase;
       let free=computeFreeCells(cols,rows,gap,cellW,cellH,guard);
-
-      // If nothing fits (tiny phones), relax guard to 0; if still empty, allow overlap (use all cells)
-      if(free.length === 0){
-        guard = 0;
-        free = computeFreeCells(cols,rows,gap,cellW,cellH,guard);
-        if(free.length === 0){
-          // As an absolute fallback, fill anywhere (tiles will be under the timer due to z-index)
-          for(let row=0; row<rows; row++) for(let col=0; col<cols; col++) free.push({row,col});
-        }
+      if(free.length===0){
+        guard=0;
+        free=computeFreeCells(cols,rows,gap,cellW,cellH,guard);
+        if(free.length===0){ for(let r=0;r<rows;r++) for(let c=0;c<cols;c++) free.push({row:r,col:c}); }
       }
 
       const total=rows*cols;
-      // If we had to relax heavily, tone down coverage a bit for clarity
-      const relaxed = (guard !== guardBase);
+      const relaxed = (guard!==guardBase);
       const coverage = relaxed ? Math.min(coverageBase, 0.40) : coverageBase;
-
       const desired=Math.min(free.length, Math.max(1, Math.round(total*coverage)));
 
-      const seq=[]; while(seq.length<desired) seq.push(...IMAGES);
-      const imgs=shuffleInPlace(seq).slice(0,desired);
+      // pick cells evenly spread
       const cells=pickEvenlySpacedCells(free, desired, cols, rows);
 
+      // initial image assignment:
+      // make a shuffled list of all image indices
+      const allIdx = [...IMAGES.keys()];
+      shuffleInPlace(allIdx);
+
+      visibleSet.clear();
+      tiles = [];
       wall.innerHTML="";
+      lastSwapAt.clear();
+
+      // If we have fewer images than desired tiles, we'll repeat later via rotation pool being empty.
+      const initial = allIdx.slice(0, Math.min(desired, allIdx.length));
+      // pool is whatever remains
+      pool = allIdx.slice(initial.length);
+
+      // If images < desired, fill the rest by repeating initial (still okay; rotation will be idle)
+      while(initial.length < desired){
+        initial.push(...allIdx);
+      }
+
       for(let i=0;i<cells.length;i++){
         const {row,col}=cells[i];
+        const idx = initial[i % initial.length]; // safe
         const t=document.createElement("div"); t.className="tile";
         t.style.gridColumn=(col+1); t.style.gridRow=(row+1);
-        const img=document.createElement("img"); img.src=imgs[i].src; img.alt=imgs[i].caption||`Photo ${i+1}`;
+        const img=document.createElement("img");
+        img.src=IMAGES[idx].src; img.alt=IMAGES[idx].caption||`Photo ${i+1}`;
         img.loading="lazy"; img.decoding="async";
         t.appendChild(img); wall.appendChild(t);
+        tiles.push({ el: t, imgEl: img, imgIndex: idx });
+        visibleSet.add(idx);
       }
+
+      // Remove any visible ones from pool just in case
+      pool = pool.filter(id => !visibleSet.has(id));
+
+      // kick off rotation
+      startWallRotation();
     }
 
-    let resizeT; function rebuildWallSoon(){ clearTimeout(resizeT); resizeT=setTimeout(buildWall,100); }
+    // Rebuild wall on resize / shuffle
+    let resizeT; function rebuildWallSoon(){ clearTimeout(resizeT); resizeT=setTimeout(buildWall,120); }
     addEventListener("load", buildWall);
-    addEventListener("resize", rebuildWallSoon);
-    shuffleBtn.addEventListener("click", buildWall);
+    addEventListener("resize", ()=>{ stopWallRotation(); rebuildWallSoon(); });
+    shuffleBtn.addEventListener("click", ()=>{ stopWallRotation(); buildWall(); });
 
     // ===== Fullscreen slideshow (FIT, random order each time) =====
     let slideIdx=0, onFirst=true, autoTimer=null; const AUTO_MS=6000;
-
     function setBG(div, i){
       const it=IMAGES[(i+IMAGES.length)%IMAGES.length];
       div.style.backgroundImage=`url('${it.src}')`;
@@ -289,8 +391,6 @@
       autoTimer=setInterval(showNext,AUTO_MS);
     }
     function restartAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=setInterval(showNext,AUTO_MS);} }
-
-    // Keyboard nav (fullscreen)
     addEventListener("keydown", e=>{
       if(!document.fullscreenElement) return;
       if(e.key==="ArrowRight"){ showNext(); restartAuto(); }
@@ -302,19 +402,22 @@
       }
     });
 
-    // Fullscreen control
+    // Fullscreen toggle
     fsBtn.addEventListener("click", ()=>{
       if(!document.fullscreenElement) document.documentElement.requestFullscreen?.();
       else document.exitFullscreen?.();
     });
-
     document.addEventListener("fullscreenchange", ()=>{
       const fs=!!document.fullscreenElement;
       document.body.classList.toggle("fs-active", fs);
-      if(fs){ startSlideshow(); }
-      else{
+      if(fs){
+        // Pause wall swaps to save work
+        stopWallRotation();
+        startSlideshow();
+      } else {
         if(autoTimer) clearInterval(autoTimer);
-        setTimeout(buildWall, 30);  // timer moves back to center; recalc wall
+        // Timer returns to center; rebuild wall & resume rotation
+        setTimeout(buildWall, 30);
       }
     });
   </script>
