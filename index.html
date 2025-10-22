@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Countdown</title>
-  <meta name="description" content="Countdown with an evenly-spread rotating photo wall and full-screen slideshow." />
+  <meta name="description" content="Countdown with an evenly-spread rotating photo wall, full-screen slideshow, and a one-time intro." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23000'/%3E%3Ctext x='50' y='62' font-size='56' text-anchor='middle' fill='%23fff'%3E%F0%9F%95%9B%EF%B8%8F%3C/text%3E%3C/svg%3E" />
   <style>
     :root{
@@ -86,6 +86,71 @@
       position:fixed; left:50%; bottom:20px; transform:translateX(-50%);
       max-width:min(760px,94vw); background:rgba(10,12,18,.28); border-color:rgba(255,255,255,.22)
     }
+
+    /* ===== Intro overlay ===== */
+    .intro{
+      position:fixed; inset:0; z-index:9999; display:grid; place-items:center;
+      background:
+        radial-gradient(1200px 800px at 80% -10%, #1a1f2c 0%, #0b0c10 60%),
+        #0b0c10;
+      overflow:hidden;
+      color:#eaf0ff;
+      opacity:1;
+      transition:opacity .6s ease, visibility .6s ease;
+      visibility:visible;
+    }
+    .intro.hide{ opacity:0; visibility:hidden; }
+
+    .intro-head{
+      position:relative; text-align:center; z-index:2;
+      transform:translateY(10px); opacity:0; animation:introIn .8s .2s ease forwards;
+    }
+    .intro-title{
+      font-weight:900; letter-spacing:.6px;
+      font-size:clamp(1.8rem, 2.2vw + 1.3rem, 3.2rem);
+      text-shadow:0 6px 40px rgba(0,0,0,.7);
+    }
+    .intro-sub{ margin-top:8px; color:var(--muted); font-size:clamp(.95rem, .4vw + .85rem, 1.1rem); }
+
+    @keyframes introIn{
+      from{ transform:translateY(16px); opacity:0; filter:blur(6px); }
+      to{ transform:translateY(0); opacity:1; filter:blur(0); }
+    }
+
+    .intro-tiles{
+      position:absolute; inset:-10% -10% -10% -10%; z-index:1; pointer-events:none;
+      filter:blur(.2px);
+    }
+    .intro-tile{
+      position:absolute; width:16vmin; height:10vmin; border-radius:12px;
+      background:linear-gradient(180deg, #1b2030, #121620); border:1px solid rgba(255,255,255,.06);
+      box-shadow:0 10px 40px rgba(0,0,0,.35);
+      opacity:0; transform:translateY(12vh) scale(.98) rotate(var(--rot, 0deg));
+      animation: rise var(--dur, 1800ms) var(--delay, 0ms) cubic-bezier(.22,.61,.36,1) forwards;
+    }
+    .intro-tile::after{
+      content:""; position:absolute; inset:0;
+      background:radial-gradient(100% 100% at 50% 0%, rgba(255,255,255,.08), rgba(0,0,0,0));
+    }
+    @keyframes rise{
+      0%{ opacity:0; transform:translateY(12vh) scale(.98) rotate(var(--rot, 0deg)); }
+      60%{ opacity:.9; }
+      100%{ opacity:0; transform:translateY(-18vh) scale(1) rotate(calc(var(--rot, 0deg) + 6deg)); }
+    }
+
+    .intro-skip{
+      position:fixed; right:14px; bottom:14px; z-index:3;
+      background:rgba(255,255,255,.12); color:#eaf0ff; border:1px solid rgba(255,255,255,.22);
+      border-radius:999px; padding:8px 12px; font-weight:700; cursor:pointer;
+      backdrop-filter:blur(6px);
+      transition:transform .08s ease, opacity .2s ease;
+    }
+    .intro-skip:active{ transform:translateY(1px); }
+
+    @media (prefers-reduced-motion: reduce){
+      .intro-tiles{display:none;}
+      .intro-head{animation:none; opacity:1; transform:none;}
+    }
   </style>
 </head>
 <body>
@@ -120,6 +185,16 @@
     </main>
 
     <footer></footer>
+  </div>
+
+  <!-- One-time Intro Overlay -->
+  <div class="intro" id="intro" aria-hidden="true">
+    <div class="intro-tiles" id="introTiles"></div>
+    <div class="intro-head">
+      <div class="intro-title">⏳ Guess whos back</div>
+      <div class="intro-sub">Countdown to November 1, 2025 — 19:40</div>
+    </div>
+    <button class="intro-skip" id="introSkip" aria-label="Skip intro">Skip</button>
   </div>
 
   <script>
@@ -178,6 +253,46 @@
     const fsBtn=document.getElementById("fsBtn");
     const bg1=document.getElementById("bg1");
     const bg2=document.getElementById("bg2");
+
+    // ===== Intro elements & logic
+    const intro = document.getElementById('intro');
+    const introTiles = document.getElementById('introTiles');
+    const introSkip = document.getElementById('introSkip');
+    const INTRO_KEY = 'intro_seen_v1';
+    const INTRO_LEN = 2400; // ms until auto-hide
+
+    function spawnIntroTiles(){
+      // Create 24 floating shards with staggered timings
+      const N = 24;
+      const W = innerWidth, H = innerHeight;
+      for(let i=0;i<N;i++){
+        const d = document.createElement('div');
+        d.className = 'intro-tile';
+        const x = Math.random()*W, y = Math.random()*H;
+        d.style.left = (x - W*0.1) + 'px';
+        d.style.top  = (y - H*0.1) + 'px';
+        d.style.setProperty('--delay', (Math.random()*400) + 'ms');
+        d.style.setProperty('--dur', (1600 + Math.random()*900) + 'ms');
+        d.style.setProperty('--rot', (Math.random()*16 - 8) + 'deg');
+        introTiles.appendChild(d);
+      }
+    }
+    function hideIntro(){
+      intro.classList.add('hide');
+      setTimeout(()=>{ intro.remove(); }, 650);
+    }
+    function maybePlayIntro(){
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const seen = localStorage.getItem(INTRO_KEY) === '1';
+      if(seen || reduced){ hideIntro(); return; }
+
+      spawnIntroTiles();
+      const t = setTimeout(()=>{ hideIntro(); }, INTRO_LEN);
+      introSkip.addEventListener('click', ()=>{ clearTimeout(t); hideIntro(); }, { once:true });
+      localStorage.setItem(INTRO_KEY,'1');
+    }
+    // Start intro after first paint
+    window.addEventListener('load', maybePlayIntro);
 
     // Preload (optional; browser will cache as they load during rotation)
     IMAGES.forEach(i=>{const im=new Image(); im.src=i.src;});
@@ -240,13 +355,12 @@
       if(pool.length === 0 || tiles.length === 0) return;
 
       const now = performance.now();
-      // Build a candidate list of tile indices we can swap
       const candidates = tiles
         .map((t, i) => ({t, i}))
         .filter(({t})=>{
           if(PAUSE_ON_HOVER && t.el.matches(':hover')) return false;
           const last = lastSwapAt.get(t.el) || 0;
-          return (now - last) > ROTATE_MS * 1.2; // cool-down
+          return (now - last) > ROTATE_MS * 1.2;
         });
 
       if(candidates.length === 0) return;
@@ -254,32 +368,24 @@
       shuffleInPlace(candidates);
       const swaps = Math.min(ROTATE_BATCH, candidates.length, pool.length);
       for(let k=0; k<swaps; k++){
-        const {t, i: tileIndex} = candidates[k];
-        // Take next new image that's not currently visible
-        // (pool should already contain non-visible, but guard just in case)
+        const {t} = candidates[k];
         let nextIdx = pool.shift();
         if(nextIdx == null) break;
         if(visibleSet.has(nextIdx)){
-          // find a truly non-visible one
           let found = -1;
           for(let j=0;j<pool.length;j++){
             if(!visibleSet.has(pool[j])){ found = j; break; }
           }
           if(found >= 0){
-            // put back the duplicate and take the found one
             pool.push(nextIdx);
             nextIdx = pool.splice(found, 1)[0];
-          }else{
-            // fallback: use it anyway
           }
         }
 
-        // Move the old one back into the pool tail
         if(Number.isInteger(t.imgIndex)){
           visibleSet.delete(t.imgIndex);
           pool.push(t.imgIndex);
         }
-        // Apply new image with a tiny fade
         t.imgEl.style.opacity = 0;
         const newImg = IMAGES[nextIdx];
         setTimeout(()=>{
@@ -295,7 +401,6 @@
     }
 
     function buildWall(){
-      // grid sizing
       const W=innerWidth, H=innerHeight, cs=getComputedStyle(document.documentElement);
       const gap=parseFloat(cs.getPropertyValue("--tile-gap"))||6;
       const target=parseFloat(cs.getPropertyValue("--tile-target"))||150;
@@ -307,7 +412,6 @@
       const cellW=(W-gap*(cols+1))/cols, cellH=(H-gap*(rows+1))/rows;
       wall.style.gridTemplateColumns=`repeat(${cols},1fr)`;
 
-      // exclusion
       let guard=guardBase;
       let free=computeFreeCells(cols,rows,gap,cellW,cellH,guard);
       if(free.length===0){
@@ -321,11 +425,8 @@
       const coverage = relaxed ? Math.min(coverageBase, 0.40) : coverageBase;
       const desired=Math.min(free.length, Math.max(1, Math.round(total*coverage)));
 
-      // pick cells evenly spread
       const cells=pickEvenlySpacedCells(free, desired, cols, rows);
 
-      // initial image assignment:
-      // make a shuffled list of all image indices
       const allIdx = [...IMAGES.keys()];
       shuffleInPlace(allIdx);
 
@@ -334,19 +435,13 @@
       wall.innerHTML="";
       lastSwapAt.clear();
 
-      // If we have fewer images than desired tiles, we'll repeat later via rotation pool being empty.
       const initial = allIdx.slice(0, Math.min(desired, allIdx.length));
-      // pool is whatever remains
       pool = allIdx.slice(initial.length);
-
-      // If images < desired, fill the rest by repeating initial (still okay; rotation will be idle)
-      while(initial.length < desired){
-        initial.push(...allIdx);
-      }
+      while(initial.length < desired){ initial.push(...allIdx); }
 
       for(let i=0;i<cells.length;i++){
         const {row,col}=cells[i];
-        const idx = initial[i % initial.length]; // safe
+        const idx = initial[i % initial.length];
         const t=document.createElement("div"); t.className="tile";
         t.style.gridColumn=(col+1); t.style.gridRow=(row+1);
         const img=document.createElement("img");
@@ -357,10 +452,7 @@
         visibleSet.add(idx);
       }
 
-      // Remove any visible ones from pool just in case
       pool = pool.filter(id => !visibleSet.has(id));
-
-      // kick off rotation
       startWallRotation();
     }
 
@@ -411,12 +503,10 @@
       const fs=!!document.fullscreenElement;
       document.body.classList.toggle("fs-active", fs);
       if(fs){
-        // Pause wall swaps to save work
         stopWallRotation();
         startSlideshow();
       } else {
         if(autoTimer) clearInterval(autoTimer);
-        // Timer returns to center; rebuild wall & resume rotation
         setTimeout(buildWall, 30);
       }
     });
