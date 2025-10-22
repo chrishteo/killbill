@@ -11,9 +11,24 @@
       --text:#f4f7ff; --muted:#b8c0d6; --glass:rgba(10,12,18,.36);
       --ring:rgba(255,255,255,.28); --shadow:0 20px 60px rgba(0,0,0,.55);
       --radius:18px;
-      --tile-gap:6px; --tile-target:150px; --tile-radius:10px;
-      --coverage:0.60; --guard-cells:1;
+
+      /* Photo wall tuning (desktop defaults) */
+      --tile-gap:6px;
+      --tile-target:150px;   /* desired tile size */
+      --tile-radius:10px;
+      --coverage:0.60;       /* ~60% of grid filled */
+      --guard-cells:1;       /* safety ring (grid cells) around timer */
     }
+
+    /* Mobile-friendly tweaks */
+    @media (max-width: 640px){
+      :root{
+        --tile-target:92px;   /* smaller tiles on phones */
+        --coverage:0.45;      /* a bit less density for clarity */
+        --guard-cells:0;      /* allow tiles closer to timer */
+      }
+    }
+
     *{box-sizing:border-box}
     html,body{height:100%}
     body{
@@ -27,15 +42,13 @@
       position:fixed; inset:0; z-index:0;
       background-position:center;
       background-repeat:no-repeat;
-      /* Default to FIT (no cropping) */
+      /* LOCKED to FIT (contain) so nothing is cropped */
       background-size:contain;
-      background-color:#000;            /* letterbox bars look clean */
+      background-color:#000;            /* letterbox bars */
       filter:brightness(.88) saturate(1.02);
       transition:opacity 1.1s ease;
       display:none;
     }
-    /* Switch to FILL mode when desired */
-    .fill-mode .bg, .fill-mode .bg2{ background-size:cover; filter:brightness(.56) saturate(1.05); }
     .bg{opacity:1}
     .bg2{opacity:0}
     .fs-active .bg, .fs-active .bg2{display:block}
@@ -90,7 +103,6 @@
       <h1>⏳ Guess whos back</h1>
       <div class="controls">
         <button class="btn" id="shuffleBtn" title="Shuffle wall">Shuffle</button>
-        <button class="btn" id="fitBtn" title="Toggle Fit/Fill">Fit</button>
         <button class="btn" id="fsBtn" title="Fullscreen">Fullscreen</button>
       </div>
     </header>
@@ -157,7 +169,6 @@
     const timerCard=document.getElementById("timerCard");
     const shuffleBtn=document.getElementById("shuffleBtn");
     const fsBtn=document.getElementById("fsBtn");
-    const fitBtn=document.getElementById("fitBtn");
     const bg1=document.getElementById("bg1");
     const bg2=document.getElementById("bg2");
 
@@ -185,19 +196,8 @@
     }
     function shuffleInPlace(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} return a; }
 
-    // ===== Photo Wall
-    function buildWall(){
-      const W=innerWidth, H=innerHeight, cs=getComputedStyle(document.documentElement);
-      const gap=parseFloat(cs.getPropertyValue("--tile-gap"))||6;
-      const target=parseFloat(cs.getPropertyValue("--tile-target"))||150;
-      const coverage=Math.max(0,Math.min(1,parseFloat(cs.getPropertyValue("--coverage"))||0.4));
-      const guard=parseInt(cs.getPropertyValue("--guard-cells"))||1;
-
-      const cols=Math.max(3,Math.floor((W-gap)/(target+gap)));
-      const rows=Math.max(3,Math.floor((H-gap)/(target+gap)));
-      const cellW=(W-gap*(cols+1))/cols, cellH=(H-gap*(rows+1))/rows;
-      wall.style.gridTemplateColumns=`repeat(${cols},1fr)`;
-
+    // ===== Photo Wall (mobile-safe: auto-relax guard if needed) =====
+    function computeFreeCells(cols, rows, gap, cellW, cellH, guard){
       const r=timerCard.getBoundingClientRect();
       const startCol=Math.max(0,Math.floor((r.left-gap)/(cellW+gap))-guard);
       const endCol=Math.min(cols-1,Math.floor((r.right-gap)/(cellW+gap))+guard);
@@ -211,8 +211,40 @@
           if(!inside) free.push({row,col});
         }
       }
+      return free;
+    }
+
+    function buildWall(){
+      const W=innerWidth, H=innerHeight, cs=getComputedStyle(document.documentElement);
+      const gap=parseFloat(cs.getPropertyValue("--tile-gap"))||6;
+      const target=parseFloat(cs.getPropertyValue("--tile-target"))||150;
+      const coverageBase=Math.max(0,Math.min(1,parseFloat(cs.getPropertyValue("--coverage"))||0.4));
+      const guardBase=parseInt(cs.getPropertyValue("--guard-cells"))||0;
+
+      const cols=Math.max(2,Math.floor((W-gap)/(target+gap)));        // allow as low as 2 on small screens
+      const rows=Math.max(2,Math.floor((H-gap)/(target+gap)));
+      const cellW=(W-gap*(cols+1))/cols, cellH=(H-gap*(rows+1))/rows;
+      wall.style.gridTemplateColumns=`repeat(${cols},1fr)`;
+
+      // Try with configured guard first
+      let guard=guardBase;
+      let free=computeFreeCells(cols,rows,gap,cellW,cellH,guard);
+
+      // If nothing fits (tiny phones), relax guard to 0; if still empty, allow overlap (use all cells)
+      if(free.length === 0){
+        guard = 0;
+        free = computeFreeCells(cols,rows,gap,cellW,cellH,guard);
+        if(free.length === 0){
+          // As an absolute fallback, fill anywhere (tiles will be under the timer due to z-index)
+          for(let row=0; row<rows; row++) for(let col=0; col<cols; col++) free.push({row,col});
+        }
+      }
 
       const total=rows*cols;
+      // If we had to relax heavily, tone down coverage a bit for clarity
+      const relaxed = (guard !== guardBase);
+      const coverage = relaxed ? Math.min(coverageBase, 0.40) : coverageBase;
+
       const desired=Math.min(free.length, Math.max(1, Math.round(total*coverage)));
 
       const seq=[]; while(seq.length<desired) seq.push(...IMAGES);
@@ -229,11 +261,13 @@
         t.appendChild(img); wall.appendChild(t);
       }
     }
+
     let resizeT; function rebuildWallSoon(){ clearTimeout(resizeT); resizeT=setTimeout(buildWall,100); }
-    addEventListener("load", buildWall); addEventListener("resize", rebuildWallSoon);
+    addEventListener("load", buildWall);
+    addEventListener("resize", rebuildWallSoon);
     shuffleBtn.addEventListener("click", buildWall);
 
-    // ===== Fullscreen slideshow (with Fit/Fill toggle)
+    // ===== Fullscreen slideshow (FIT, random order each time) =====
     let slideIdx=0, onFirst=true, autoTimer=null; const AUTO_MS=6000;
 
     function setBG(div, i){
@@ -249,7 +283,7 @@
     }
     function startSlideshow(){
       if(!IMAGES.length) return;
-      shuffleInPlace(IMAGES);              // randomize each time fullscreen starts
+      shuffleInPlace(IMAGES);      // randomize order on each enter
       setBG(bg1,0);
       if(autoTimer) clearInterval(autoTimer);
       autoTimer=setInterval(showNext,AUTO_MS);
@@ -268,15 +302,10 @@
       }
     });
 
-    // Fullscreen & Fit/Fill controls
+    // Fullscreen control
     fsBtn.addEventListener("click", ()=>{
       if(!document.fullscreenElement) document.documentElement.requestFullscreen?.();
       else document.exitFullscreen?.();
-    });
-    fitBtn.addEventListener("click", ()=>{
-      // Toggle fill/fit mode (fit = default). Works in or out of fullscreen, but useful in fullscreen.
-      const filling = document.body.classList.toggle("fill-mode");
-      fitBtn.textContent = filling ? "Fill" : "Fit"; // button shows current mode name
     });
 
     document.addEventListener("fullscreenchange", ()=>{
@@ -285,7 +314,7 @@
       if(fs){ startSlideshow(); }
       else{
         if(autoTimer) clearInterval(autoTimer);
-        setTimeout(buildWall, 30);
+        setTimeout(buildWall, 30);  // timer moves back to center; recalc wall
       }
     });
   </script>
