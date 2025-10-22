@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Countdown + Gallery</title>
+  <meta name="description" content="A responsive countdown timer with a photo slideshow/gallery. Deployable to Vercel as a static site." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23000'/%3E%3Ctext x='50' y='62' font-size='56' text-anchor='middle' fill='%23fff'%3E%F0%9F%95%9B%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+  <style>
+    :root{
+      --bg: #0b0c10;
+      --card: #151820;
+      --muted: #8a93a6;
+      --text: #eaf0ff;
+      --accent: #7c8cff;
+      --accent-2: #43d1a1;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body{
+      margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: radial-gradient(1200px 800px at 80% -10%, #1a1f2c 0%, var(--bg) 60%);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+    }
+    .container{ max-width: 1100px; padding: 24px; margin: 0 auto; }
+    header{ display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+    h1{ font-size: clamp(1.4rem, 1.2rem + 1.2vw, 2.2rem); margin: 0; letter-spacing: .4px; }
+    .pill{ color: #0a0b0e; background: linear-gradient(135deg, var(--accent), var(--accent-2)); padding: 6px 12px; border-radius: 999px; font-weight: 700; }
+
+    .grid{ display: grid; grid-template-columns: 1.1fr .9fr; gap: 24px; margin-top: 18px; }
+    @media (max-width: 900px){ .grid{ grid-template-columns: 1fr; } }
+
+    .card{ background: linear-gradient(180deg, #1a1f2b, #131720); border: 1px solid rgba(255,255,255,.06); border-radius: var(--radius); box-shadow: var(--shadow); overflow: clip; }
+
+    /* COUNTDOWN */
+    .timer-wrap{ padding: 22px 22px 8px; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap: wrap; }
+    .target-inputs{ display:flex; gap:8px; align-items:center; flex-wrap: wrap; }
+    .target-inputs input[type="datetime-local"], .target-inputs input[type="text"]{ background:#0f1220; border:1px solid rgba(255,255,255,.08); color:var(--text); border-radius:10px; padding:10px 12px; outline:none; }
+    .target-inputs input[type="text"]{ min-width: 240px; }
+    .target-inputs small{ color: var(--muted); }
+
+    .timer{ display:grid; grid-template-columns: repeat(4, minmax(80px, 1fr)); gap:12px; padding: 0 22px 22px; }
+    .tbox{ background: #0f1220; border:1px solid rgba(255,255,255,.06); border-radius: 12px; text-align:center; padding: 14px 10px; }
+    .tbox .num{ font-variant-numeric: tabular-nums; font-weight: 800; font-size: clamp(1.6rem, 3.5vw, 2.6rem); letter-spacing: .5px; }
+    .tbox .lab{ color:var(--muted); font-size:.85rem; margin-top:6px; }
+
+    .actions{ display:flex; gap:10px; align-items:center; padding: 10px 22px 22px; flex-wrap: wrap; }
+    .btn{
+      background: #0f1220; color: var(--text); border:1px solid rgba(255,255,255,.12);
+      border-radius: 12px; padding: 10px 14px; cursor: pointer; font-weight: 600;
+      transition: transform .06s ease, background .2s ease, border-color .2s ease;
+    }
+    .btn:hover{ transform: translateY(-1px); border-color: rgba(255,255,255,.25); }
+    .btn.primary{ background: linear-gradient(135deg, var(--accent), var(--accent-2)); color:#0b0c10; border: none; }
+
+    /* GALLERY */
+    .viewer{ position: relative; aspect-ratio: 16/10; background: #0d101a; display:grid; place-items:center; }
+    .viewer img{ width:100%; height:100%; object-fit: cover; }
+    .caption{ position:absolute; bottom:12px; left:12px; right:12px; background: linear-gradient(180deg, rgba(0,0,0,.0), rgba(0,0,0,.4)); padding:10px 12px; border-radius: 10px; font-size:.95rem; }
+
+    .controls{ display:flex; gap:10px; align-items:center; justify-content:space-between; padding:10px 12px 14px; }
+    .left, .right{ display:flex; gap:8px; align-items:center; flex-wrap: wrap; }
+
+    .thumbs{ display:grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap:8px; padding: 0 12px 14px; }
+    .thumbs button{ border:2px solid transparent; border-radius: 9px; overflow:hidden; padding:0; background:none; cursor:pointer; }
+    .thumbs img{ width:100%; aspect-ratio: 1.5/1; object-fit: cover; display:block; }
+    .thumbs button[aria-current="true"]{ border-color: var(--accent-2); }
+
+    .kbd{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background:#0c0f18; border:1px solid rgba(255,255,255,.16); padding:2px 6px; border-radius:6px; font-size:.8rem; color: var(--muted); }
+    footer{ opacity:.8; color: var(--muted); text-align:center; margin-top: 26px; font-size: .95rem; }
+    a { color: var(--accent-2); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>⏳ Countdown + Gallery</h1>
+      <span class="pill" id="installPWA" hidden>Install</span>
+    </header>
+
+    <div class="grid" role="main">
+      <!-- COUNTDOWN CARD -->
+      <section class="card" aria-labelledby="countdown-title">
+        <div class="timer-wrap">
+          <h2 id="countdown-title" style="margin:0">Countdown</h2>
+          <div class="target-inputs">
+            <label>
+              <small>Target</small><br/>
+              <input id="targetInput" type="datetime-local" />
+            </label>
+            <label>
+              <small>Label</small><br/>
+              <input id="labelInput" type="text" placeholder="e.g. Launch Day" />
+            </label>
+          </div>
+        </div>
+        <div class="timer" aria-live="polite">
+          <div class="tbox"><div class="num" id="days">00</div><div class="lab">Days</div></div>
+          <div class="tbox"><div class="num" id="hours">00</div><div class="lab">Hours</div></div>
+          <div class="tbox"><div class="num" id="mins">00</div><div class="lab">Minutes</div></div>
+          <div class="tbox"><div class="num" id="secs">00</div><div class="lab">Seconds</div></div>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="saveCountdown">Save</button>
+          <button class="btn" id="resetCountdown">Reset</button>
+          <span id="countdownLabel" class="kbd" aria-live="polite"></span>
+        </div>
+      </section>
+
+      <!-- GALLERY CARD -->
+      <section class="card" aria-labelledby="gallery-title">
+        <div class="viewer" id="viewer" aria-live="polite">
+          <img id="mainImg" alt="Slideshow image" src="" />
+          <div class="caption" id="caption"></div>
+        </div>
+        <div class="controls">
+          <div class="left">
+            <button class="btn" id="prevBtn" title="Previous (←)">◀︎ Prev</button>
+            <button class="btn" id="nextBtn" title="Next (→)">Next ▶︎</button>
+            <button class="btn" id="playBtn" aria-pressed="false">Play ▶︎</button>
+          </div>
+          <div class="right">
+            <button class="btn" id="shuffleBtn">Shuffle</button>
+            <button class="btn" id="fullscreenBtn">Fullscreen</button>
+          </div>
+        </div>
+        <div class="thumbs" id="thumbs" aria-label="Thumbnails"></div>
+      </section>
+    </div>
+
+    <footer>
+      Tip: Use <span class="kbd">←</span> and <span class="kbd">→</span> to navigate, <span class="kbd">Space</span> to play/pause. Touch swipe works on mobile.
+    </footer>
+  </div>
+
+  <script>
+    // =============== CONFIG (Edit this) ===============
+    // 1) Set your default target date/time (local time). Users can change & persist it.
+    const DEFAULT_TARGET = new Date(Date.now() + 7*24*60*60*1000); // 7 days from first load
+    const DEFAULT_LABEL = "Launch Day";
+
+    // 2) Provide your images here. You can use relative paths (e.g. 'images/pic1.jpg')
+    //    or external URLs. Caption is optional.
+    //const IMAGES = [
+    //  { src: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee", caption: "Mountains at golden hour" },
+    //  { src: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e", caption: "Waves and beaches" },
+    //  { src: "https://images.unsplash.com/photo-1501785888041-af3ef285b470", caption: "Forests and mists" },
+    //  { src: "https://images.unsplash.com/photo-1469474968028-56623f02e42e", caption: "Starry night sky" },
+    //  { src: "https://images.unsplash.com/photo-1519681393784-d120267933ba", caption: "City lights" },
+    //];
+	const IMAGES = [
+      { src: "images/IMG_20231224_192027.jpg", caption: "Photo 1" },
+      { src: "images/IMG_20231224_192029.jpg", caption: "Photo 2" },
+    ];
+    // =============== END CONFIG =======================
+
+    // ---- Utilities
+    const $ = (sel) => document.querySelector(sel);
+    const pad = (n) => String(n).padStart(2, '0');
+
+    // ---- Countdown state
+    const targetInput = $('#targetInput');
+    const labelInput = $('#labelInput');
+    const saveBtn = $('#saveCountdown');
+    const resetBtn = $('#resetCountdown');
+    const labelSpan = $('#countdownLabel');
+
+    // Local storage keys
+    const LS_KEYS = { target: 'cd_target', label: 'cd_label' };
+
+    function loadCountdownFromStorage(){
+      const t = localStorage.getItem(LS_KEYS.target);
+      const l = localStorage.getItem(LS_KEYS.label);
+      const target = t ? new Date(t) : DEFAULT_TARGET;
+      const label = l ?? DEFAULT_LABEL;
+      setCountdownInputs(target, label);
+      return { target, label };
+    }
+
+    function setCountdownInputs(date, label){
+      // datetime-local expects YYYY-MM-DDTHH:mm
+      const iso = new Date(date.getTime() - date.getTimezoneOffset()*60000).toISOString().slice(0,16);
+      targetInput.value = iso;
+      labelInput.value = label || '';
+      labelSpan.textContent = label ? `Target: ${label}` : '';
+    }
+
+    function persistCountdown(){
+      const date = new Date(targetInput.value);
+      const label = labelInput.value.trim();
+      if(!Number.isFinite(date.getTime())){
+        alert('Please provide a valid date/time.');
+        return;
+      }
+      localStorage.setItem(LS_KEYS.target, date.toISOString());
+      localStorage.setItem(LS_KEYS.label, label);
+      labelSpan.textContent = label ? `Target: ${label}` : '';
+      startCountdown(date);
+    }
+
+    function resetCountdown(){
+      localStorage.removeItem(LS_KEYS.target);
+      localStorage.removeItem(LS_KEYS.label);
+      setCountdownInputs(DEFAULT_TARGET, DEFAULT_LABEL);
+      startCountdown(DEFAULT_TARGET);
+    }
+
+    let cdInterval = null;
+    function startCountdown(targetDate){
+      if(cdInterval) clearInterval(cdInterval);
+      function tick(){
+        const now = new Date();
+        let diff = Math.max(0, targetDate - now);
+        const d = Math.floor(diff / (24*60*60*1000)); diff -= d*24*60*60*1000;
+        const h = Math.floor(diff / (60*60*1000)); diff -= h*60*60*1000;
+        const m = Math.floor(diff / (60*1000)); diff -= m*60*1000;
+        const s = Math.floor(diff / 1000);
+        $('#days').textContent = pad(d);
+        $('#hours').textContent = pad(h);
+        $('#mins').textContent = pad(m);
+        $('#secs').textContent = pad(s);
+        if(targetDate - now <= 0){
+          labelSpan.textContent = (labelInput.value || 'Countdown') + ' reached!';
+        }
+      }
+      tick();
+      cdInterval = setInterval(tick, 1000);
+    }
+
+    saveBtn.addEventListener('click', persistCountdown);
+    resetBtn.addEventListener('click', resetCountdown);
+
+    // ---- Init countdown
+    const { target } = loadCountdownFromStorage();
+    startCountdown(target);
+
+    // ---- Gallery state
+    const mainImg = $('#mainImg');
+    const caption = $('#caption');
+    const thumbs = $('#thumbs');
+    const viewer = $('#viewer');
+
+    const prevBtn = $('#prevBtn');
+    const nextBtn = $('#nextBtn');
+    const playBtn = $('#playBtn');
+    const shuffleBtn = $('#shuffleBtn');
+    const fullscreenBtn = $('#fullscreenBtn');
+
+    let idx = 0;
+    let autoplay = false;
+    let autoTimer = null;
+    const AUTO_MS = 3500;
+
+    // Preload images
+    IMAGES.forEach(i=>{ const img = new Image(); img.src = i.src; });
+
+    function renderThumbs(){
+      thumbs.innerHTML = '';
+      IMAGES.forEach((it, i) => {
+        const b = document.createElement('button');
+        b.setAttribute('aria-label', `Show image ${i+1}`);
+        b.addEventListener('click', () => { go(i); });
+        const im = document.createElement('img');
+        im.src = it.src; im.alt = it.caption || `Image ${i+1}`;
+        b.appendChild(im);
+        thumbs.appendChild(b);
+      });
+      updateThumbState();
+    }
+
+    function updateThumbState(){
+      [...thumbs.children].forEach((b, i) => b.setAttribute('aria-current', i===idx));
+    }
+
+    function go(newIdx){
+      idx = (newIdx + IMAGES.length) % IMAGES.length;
+      const { src, caption: cap } = IMAGES[idx];
+      mainImg.src = src;
+      caption.textContent = cap || '';
+      updateThumbState();
+    }
+
+    function next(){ go(idx+1); }
+    function prev(){ go(idx-1); }
+
+    function setAutoplay(on){
+      autoplay = on;
+      playBtn.setAttribute('aria-pressed', on);
+      playBtn.textContent = on ? 'Pause ❚❚' : 'Play ▶︎';
+      if(autoTimer) clearInterval(autoTimer);
+      if(on){ autoTimer = setInterval(next, AUTO_MS); }
+    }
+
+    function shuffle(){
+      // Fisher–Yates
+      for(let i=IMAGES.length-1;i>0;i--){
+        const j = Math.floor(Math.random()*(i+1));
+        [IMAGES[i], IMAGES[j]] = [IMAGES[j], IMAGES[i]];
+      }
+      renderThumbs();
+      go(0);
+    }
+
+    function toggleFullscreen(){
+      const el = viewer;
+      if(!document.fullscreenElement){ el.requestFullscreen?.(); }
+      else { document.exitFullscreen?.(); }
+    }
+
+    prevBtn.addEventListener('click', prev);
+    nextBtn.addEventListener('click', next);
+    playBtn.addEventListener('click', () => setAutoplay(!autoplay));
+    shuffleBtn.addEventListener('click', shuffle);
+    fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+    // Keyboard shortcuts
+    window.addEventListener('keydown', (e)=>{
+      if(['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) return;
+      if(e.key === 'ArrowLeft'){ prev(); }
+      if(e.key === 'ArrowRight'){ next(); }
+      if(e.code === 'Space'){ e.preventDefault(); setAutoplay(!autoplay); }
+      if(e.key.toLowerCase() === 'f'){ toggleFullscreen(); }
+    });
+
+    // Touch swipe (simple)
+    let touchX = null;
+    viewer.addEventListener('touchstart', e=>{ touchX = e.touches[0].clientX; }, {passive:true});
+    viewer.addEventListener('touchend', e=>{
+      if(touchX == null) return; const dx = e.changedTouches[0].clientX - touchX; touchX = null;
+      if(Math.abs(dx) > 40){ dx>0 ? prev() : next(); }
+    });
+
+    // Init gallery
+    renderThumbs();
+    go(0);
+
+    // ---- Basic PWA install prompt (optional)
+    let deferredPrompt = null; const installBtn = document.getElementById('installPWA');
+    window.addEventListener('beforeinstallprompt', (e)=>{ e.preventDefault(); deferredPrompt = e; installBtn.hidden = false; });
+    installBtn?.addEventListener('click', async ()=>{ deferredPrompt?.prompt(); const { outcome } = await deferredPrompt.userChoice; if(outcome){ installBtn.hidden = true; } });
+  </script>
+</body>
+</html>
