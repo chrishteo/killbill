@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Countdown</title>
-  <meta name="description" content="Countdown with a smart photo wall and full-screen slideshow." />
+  <meta name="description" content="Countdown with an evenly-spread photo wall and full-screen slideshow." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23000'/%3E%3Ctext x='50' y='62' font-size='56' text-anchor='middle' fill='%23fff'%3E%F0%9F%95%9B%EF%B8%8F%3C/text%3E%3C/svg%3E" />
   <style>
     :root{
@@ -15,12 +15,12 @@
       --shadow: 0 20px 60px rgba(0,0,0,.55);
       --radius: 18px;
 
-      /* Wall tuning */
+      /* Photo wall tuning */
       --tile-gap: 6px;
       --tile-target: 150px; /* desired tile size */
       --tile-radius: 10px;
-      --coverage: 0.4;      /* 40% of the screen */
-      --guard-cells: 1;     /* padding cells around timer exclusion zone */
+      --coverage: 0.40;     /* 40% of the total grid area */
+      --guard-cells: 1;     /* padding cells around the timer exclusion zone */
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
@@ -33,7 +33,7 @@
       -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
     }
 
-    /* ===== Full-screen slideshow (used only in fullscreen) ===== */
+    /* ===== Full-screen slideshow (visible only in fullscreen) ===== */
     .bg, .bg2{
       position: fixed; inset: 0; z-index: 0;
       background-position: center;
@@ -47,7 +47,7 @@
     .bg2{ opacity: 0; }
     .fs-active .bg, .fs-active .bg2{ display: block; }
 
-    /* ===== Photo Wall layer (shown when NOT fullscreen) ===== */
+    /* ===== Photo Wall (hidden in fullscreen) ===== */
     .wall{
       position: fixed; inset: 0; z-index: 0;
       display: grid;
@@ -55,7 +55,7 @@
       padding: var(--tile-gap);
       background: #0b0c10;
     }
-    .fs-active .wall{ display: none; } /* hide wall in fullscreen */
+    .fs-active .wall{ display: none; }
 
     .tile{
       background: #10131c;
@@ -155,7 +155,7 @@
 
     footer{ height: 1px; } /* blank */
 
-    /* Fullscreen: show only 1 image slideshow & move timer down */
+    /* Fullscreen: single slideshow & move timer down */
     .fs-active header{ display: none; }
     .fs-active .timer-card{
       position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
@@ -166,11 +166,11 @@
   </style>
 </head>
 <body>
-  <!-- Full-screen slideshow layers (visible in fullscreen only) -->
+  <!-- Full-screen slideshow layers -->
   <div class="bg" id="bg1" role="img" aria-label="Background photo"></div>
   <div class="bg2" id="bg2" role="img" aria-label="Background photo (next)"></div>
 
-  <!-- Photo wall (visible in normal mode) -->
+  <!-- Photo wall (normal mode) -->
   <div class="wall" id="wall"></div>
 
   <div class="vignette" aria-hidden="true"></div>
@@ -202,6 +202,8 @@
   <script>
     // ===== CONFIG =====
     const DEFAULT_TARGET = new Date("2025-11-01T19:40:00+03:00");
+
+    // Your images (auto-generated list you pasted)
     const IMAGES = [
       { src: "images/IMG_20161229_204822.jpg", caption: "IMG_20161229_204822" },
       { src: "images/IMG_20170709_123029.jpg", caption: "IMG_20170709_123029" },
@@ -222,7 +224,6 @@
       { src: "images/IMG_20240801_150855.jpg", caption: "IMG_20240801_150855" },
       { src: "images/IMG_20250518_014704004_HDR.jpg", caption: "IMG_20250518_014704004_HDR" },
       { src: "images/IMG_20250712_170059692_HDR.jpg", caption: "IMG_20250712_170059692_HDR" },
-      // Add more images here
     ];
 
     // ===== Countdown =====
@@ -258,17 +259,43 @@
     // Preload images
     IMAGES.forEach(i => { const im = new Image(); im.src = i.src; });
 
-    function shuffle(arr){
-      for(let i = arr.length-1; i > 0; i--){
-        const j = Math.floor(Math.random()*(i+1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
+    // --- Blue-noise style selection: pick cells evenly across the grid
+    function pickEvenlySpacedCells(freeCells, desired, cols, rows) {
+      if (!freeCells.length || desired <= 0) return [];
+      // Seed: farthest from center
+      const cx = (cols - 1) / 2, cy = (rows - 1) / 2;
+      let seed = freeCells[0], bestSeedScore = -1;
+      for (const c of freeCells) {
+        const dx = c.col - cx, dy = c.row - cy;
+        const score = dx*dx + dy*dy;
+        if (score > bestSeedScore) { bestSeedScore = score; seed = c; }
       }
-      return arr;
+      const selected = [seed];
+      while (selected.length < desired && selected.length < freeCells.length) {
+        let bestCell = null, bestDist = -1;
+        for (const c of freeCells) {
+          if (selected.some(s => s.col === c.col && s.row === c.row)) continue;
+          let minD2 = Infinity;
+          for (const s of selected) {
+            const dx = c.col - s.col, dy = c.row - s.row;
+            const d2 = dx*dx + dy*dy;
+            if (d2 < minD2) minD2 = d2;
+          }
+          if (minD2 > bestDist) { bestDist = minD2; bestCell = c; }
+        }
+        if (!bestCell) break;
+        selected.push(bestCell);
+      }
+      return selected;
     }
 
-    // ===== Photo Wall =====
+    function shuffleInPlace(a){
+      for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+      return a;
+    }
+
+    // ===== Photo Wall (40% coverage, repeats images if needed) =====
     function buildWall(){
-      // Compute grid
       const W = window.innerWidth;
       const H = window.innerHeight;
       const cs = getComputedStyle(document.documentElement);
@@ -284,14 +311,14 @@
 
       wall.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
 
-      // Exclusion zone around timer (in cells)
+      // Exclusion zone around timer (grid cells)
       const r = timerCard.getBoundingClientRect();
       const startCol = Math.max(0, Math.floor((r.left - gap) / (cellW + gap)) - guard);
       const endCol   = Math.min(cols-1, Math.floor((r.right - gap) / (cellW + gap)) + guard);
       const startRow = Math.max(0, Math.floor((r.top - gap) / (cellH + gap)) - guard);
       const endRow   = Math.min(rows-1, Math.floor((r.bottom - gap) / (cellH + gap)) + guard);
 
-      // Build list of free cells
+      // Free cells
       const freeCells = [];
       for(let row=0; row<rows; row++){
         for(let col=0; col<cols; col++){
@@ -300,23 +327,20 @@
         }
       }
 
-      // How many cells to fill to achieve ~coverage
       const totalCells = rows * cols;
       const desired = Math.min(freeCells.length, Math.max(1, Math.round(totalCells * coverage)));
 
-      // Prepare image sequence (repeat to fill desired)
+      // Prepare images: repeat to reach desired count
       const seq = [];
-      while(seq.length < desired){
-        seq.push(...IMAGES);
-      }
-      const chosenImages = shuffle(seq).slice(0, desired);
+      while (seq.length < desired) seq.push(...IMAGES);
+      const chosenImages = shuffleInPlace(seq).slice(0, desired);
 
-      // Choose cells randomly for those images
-      const cellsToUse = shuffle([...freeCells]).slice(0, desired);
+      // Even-spread selection of cells
+      const cellsToUse = pickEvenlySpacedCells(freeCells, desired, cols, rows);
 
-      // Render
+      // Render wall
       wall.innerHTML = "";
-      for(let i=0; i<desired; i++){
+      for(let i=0; i<cellsToUse.length; i++){
         const {row, col} = cellsToUse[i];
         const tile = document.createElement("div");
         tile.className = "tile";
@@ -332,7 +356,7 @@
       }
     }
 
-    // Build wall initially and on resize (debounced)
+    // Rebuild wall on resize (debounced)
     let resizeT;
     function rebuildWallSoon(){
       clearTimeout(resizeT);
@@ -343,7 +367,7 @@
 
     shuffleBtn.addEventListener("click", buildWall);
 
-    // ===== Full-screen slideshow (single image cross-fade) =====
+    // ===== Full-screen slideshow (single image, cross-fade) =====
     let slideIdx = 0;
     let onFirst = true;
     let autoTimer = null;
@@ -354,7 +378,6 @@
       div.style.backgroundImage = `url('${it.src}')`;
       div.setAttribute("aria-label", it.caption || "Background photo");
     }
-
     function showNext(){
       const next = (slideIdx + 1) % IMAGES.length;
       if (onFirst){
@@ -369,19 +392,21 @@
       onFirst = !onFirst;
       slideIdx = next;
     }
-
     function startSlideshow(){
       if (!IMAGES.length) return;
       setBG(bg1, 0);
       if (autoTimer) clearInterval(autoTimer);
       autoTimer = setInterval(showNext, AUTO_MS);
     }
+    function restartAuto(){
+      if (autoTimer){ clearInterval(autoTimer); autoTimer = setInterval(showNext, AUTO_MS); }
+    }
 
-    // Keyboard nav for slideshow (only meaningful in fullscreen)
+    // Keyboard nav (only meaningful in fullscreen)
     window.addEventListener("keydown", (e)=>{
       if (!document.fullscreenElement) return;
       if (e.key === "ArrowRight") { showNext(); restartAuto(); }
-      if (e.key === "ArrowLeft")  { // show previous
+      if (e.key === "ArrowLeft")  {
         const prev = (slideIdx - 1 + IMAGES.length) % IMAGES.length;
         if (onFirst){ setBG(bg2, prev); bg2.style.opacity = 1; bg1.style.opacity = 0; }
         else        { setBG(bg1, prev); bg1.style.opacity = 1; bg2.style.opacity = 0; }
@@ -390,11 +415,8 @@
         restartAuto();
       }
     });
-    function restartAuto(){
-      if (autoTimer){ clearInterval(autoTimer); autoTimer = setInterval(showNext, AUTO_MS); }
-    }
 
-    // ===== Fullscreen handling =====
+    // Fullscreen toggling
     fsBtn.addEventListener("click", ()=>{
       if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
       else document.exitFullscreen?.();
@@ -406,9 +428,9 @@
       if (fs){
         startSlideshow();
       } else {
-        // Rebuild the wall because the timer moved back to center
-        setTimeout(buildWall, 30);
         if (autoTimer) clearInterval(autoTimer);
+        // Timer returns to center; rebuild wall so tiles can occupy that space again
+        setTimeout(buildWall, 30);
       }
     });
   </script>
