@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Countdown</title>
-  <meta name="description" content="Centered countdown with full-screen photo background and side thumbnails." />
+  <meta name="description" content="Centered countdown with full-screen background and edge thumbnails." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23000'/%3E%3Ctext x='50' y='62' font-size='56' text-anchor='middle' fill='%23fff'%3E%F0%9F%95%9B%EF%B8%8F%3C/text%3E%3C/svg%3E" />
   <style>
     :root{
@@ -118,9 +118,9 @@
     }
     .lab{ margin-top: 6px; color: var(--muted); font-size: .95rem; }
 
-    footer{ height: 1px; } /* placeholder so grid works, no tip text */
+    footer{ height: 1px; } /* placeholder */
 
-    /* Fullscreen adjustments: move card to bottom-center, make glass lighter, hide header */
+    /* Fullscreen adjustments */
     .fs-active header{ display: none; }
     .fs-active .timer-card{
       position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
@@ -129,37 +129,63 @@
       border-color: rgba(255,255,255,.22);
     }
 
-    /* Side thumbnails (toggleable) */
-    .side{
-      position: fixed; top: 70px; bottom: 20px; width: 92px; z-index: 3;
-      display: none; /* hidden by default, toggled with .show */
+    /* ===== PHOTO WALL EDGES ===== */
+    .edge{
+      position: fixed; z-index: 3; display: none;
+      backdrop-filter: blur(8px);
     }
-    .side.show{ display: block; }
-    .side .panel{
-      height: 100%; overflow:auto; padding: 8px;
-      background: rgba(6,8,12,.42); border: 1px solid rgba(255,255,255,.18);
-      border-radius: 16px; backdrop-filter: blur(8px); box-shadow: var(--shadow);
+    .edges-show .edge{ display: block; }
+
+    .edge .panel{
+      height: 100%; width: 100%;
+      background: rgba(6,8,12,.42);
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      overflow: auto;
+      padding: 8px;
+      display: flex; gap: 8px; flex-wrap: nowrap;
     }
-    .side.left{ left: 10px; }
-    .side.right{ right: 10px; }
+
+    /* Positions/sizes */
+    .edge.top    { left: 120px; right: 120px; top: 10px;  height: 92px; }
+    .edge.bottom { left: 120px; right: 120px; bottom: 10px; height: 92px; }
+    .edge.left   { left: 10px;  top: 120px; bottom: 120px; width: 92px; }
+    .edge.right  { right: 10px; top: 120px; bottom: 120px; width: 92px; }
+
+    .edge.top .panel, .edge.bottom .panel { flex-direction: row; }
+    .edge.left .panel, .edge.right .panel {
+      flex-direction: column;
+    }
+
     .thumb{
-      display:block; width:100%; border-radius: 10px; overflow:hidden;
-      border:2px solid transparent; margin-bottom:8px; background: #111;
-      cursor:pointer;
+      display:block; border-radius: 10px; overflow:hidden;
+      border:2px solid transparent; background: #111; cursor:pointer;
+      flex: 0 0 auto;
     }
-    .thumb img{ display:block; width:100%; height:70px; object-fit: cover; }
+    .edge.top .thumb, .edge.bottom .thumb { width: 110px; height: 70px; }
+    .edge.left .thumb, .edge.right .thumb { width: 70px;  height: 110px; }
+
+    .thumb img{ width:100%; height:100%; object-fit: cover; display:block; }
     .thumb[aria-current="true"]{ border-color: rgba(67,209,161,.9); }
+
+    @media (max-width: 900px){
+      .edge.top, .edge.bottom { left: 10px; right: 10px; }
+      .edge.left, .edge.right { top: 100px; bottom: 100px; }
+    }
   </style>
 </head>
 <body>
-  <!-- Background slideshow layers -->
+  <!-- Background slideshow -->
   <div class="bg" id="bg1" role="img" aria-label="Background photo"></div>
   <div class="bg2" id="bg2" role="img" aria-label="Background photo (next)"></div>
   <div class="vignette" aria-hidden="true"></div>
 
-  <!-- Side thumbnails (hidden until toggled) -->
-  <aside class="side left" id="sideLeft" aria-label="Thumbnails left"><div class="panel" id="leftPanel"></div></aside>
-  <aside class="side right" id="sideRight" aria-label="Thumbnails right"><div class="panel" id="rightPanel"></div></aside>
+  <!-- Photo Wall edges -->
+  <aside class="edge top"><div class="panel" id="edgeTop"></div></aside>
+  <aside class="edge bottom"><div class="panel" id="edgeBottom"></div></aside>
+  <aside class="edge left"><div class="panel" id="edgeLeft"></div></aside>
+  <aside class="edge right"><div class="panel" id="edgeRight"></div></aside>
 
   <!-- Foreground -->
   <div class="wrap">
@@ -192,13 +218,12 @@
     const IMAGES = [
       { src: "images/IMG_20231224_192027.jpg", caption: "Photo 1" },
       { src: "images/IMG_20231224_192029.jpg", caption: "Photo 2" },
-      // add more if you like
+      // Add more images here if you like
     ];
 
     // ===== Countdown (locked) =====
     const pad = (n) => String(n).padStart(2, "0");
     let cdInterval = null;
-
     function startCountdown(targetDate){
       if (cdInterval) clearInterval(cdInterval);
       function tick(){
@@ -218,7 +243,7 @@
     }
     startCountdown(DEFAULT_TARGET);
 
-    // ===== Background slideshow with cross-fade =====
+    // ===== Background slideshow =====
     const bg1 = document.getElementById("bg1");
     const bg2 = document.getElementById("bg2");
     let idx = 0;
@@ -226,7 +251,6 @@
     let autoTimer = null;
     const AUTO_MS = 6000;
 
-    // Preload images
     IMAGES.forEach(i => { const im = new Image(); im.src = i.src; });
 
     function setBG(div, i){
@@ -257,7 +281,6 @@
       autoTimer = setInterval(()=> show(idx+1), AUTO_MS);
     }
 
-    // Initial
     setBG(bg1, 0);
     restartAuto();
 
@@ -291,34 +314,37 @@
       document.body.classList.toggle("fs-active", !!document.fullscreenElement);
     });
 
-    // ===== Side thumbnails (left & right) =====
-    const thumbsBtn  = document.getElementById("thumbsBtn");
-    const sideLeft   = document.getElementById("sideLeft");
-    const sideRight  = document.getElementById("sideRight");
-    const leftPanel  = document.getElementById("leftPanel");
-    const rightPanel = document.getElementById("rightPanel");
+    // ===== Photo Wall (edges) =====
+    const thumbsBtn = document.getElementById("thumbsBtn");
+    const edgeTop = document.getElementById("edgeTop");
+    const edgeBottom = document.getElementById("edgeBottom");
+    const edgeLeft = document.getElementById("edgeLeft");
+    const edgeRight = document.getElementById("edgeRight");
 
-    function buildThumbs(){
-      leftPanel.innerHTML = "";
-      rightPanel.innerHTML = "";
-      // Split roughly half to each side
-      const half = Math.ceil(IMAGES.length / 2);
-      const left = IMAGES.slice(0, half);
-      const right = IMAGES.slice(half);
-
-      left.forEach((it, i) => leftPanel.appendChild(makeThumb(it, i)));
-      right.forEach((it, j) => rightPanel.appendChild(makeThumb(it, j + half)));
+    function buildEdges(){
+      // Clear
+      [edgeTop, edgeBottom, edgeLeft, edgeRight].forEach(n => n.innerHTML = "");
+      // Round-robin distribute across 4 edges for balance
+      IMAGES.forEach((it, i) => {
+        const thumb = makeThumb(it, i);
+        const mod = i % 4;
+        if (mod === 0) edgeTop.appendChild(thumb);
+        else if (mod === 1) edgeRight.appendChild(thumb);
+        else if (mod === 2) edgeBottom.appendChild(thumb);
+        else edgeLeft.appendChild(thumb);
+      });
       updateThumbHighlight();
     }
 
     function makeThumb(it, i){
       const a = document.createElement("a");
-      a.href = "#"; a.className = "thumb"; a.setAttribute("aria-label", it.caption || `Image ${i+1}`);
+      a.href = "#"; a.className = "thumb";
+      a.dataset.index = i;
+      a.setAttribute("aria-label", it.caption || `Image ${i+1}`);
       const im = document.createElement("img");
       im.src = it.src; im.alt = it.caption || `Image ${i+1}`;
       a.appendChild(im);
       a.addEventListener("click", (ev)=>{ ev.preventDefault(); show(i); });
-      a.dataset.index = i;
       return a;
     }
 
@@ -330,11 +356,9 @@
     }
 
     thumbsBtn.addEventListener("click", ()=>{
-      const willShow = !sideLeft.classList.contains("show");
-      sideLeft.classList.toggle("show", willShow);
-      sideRight.classList.toggle("show", willShow);
-      thumbsBtn.setAttribute("aria-pressed", String(willShow));
-      if (willShow && !leftPanel.childElementCount) buildThumbs();
+      const isOn = document.body.classList.toggle("edges-show");
+      thumbsBtn.setAttribute("aria-pressed", String(isOn));
+      if (isOn && !edgeTop.childElementCount) buildEdges();
     });
   </script>
 </body>
