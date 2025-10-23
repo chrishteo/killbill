@@ -161,10 +161,11 @@
     }
 	
 	/* Parallax */
-	.wrap { transition: transform .25s ease-out; }
-	/* Let clicks pass through the foreground wrapper, but keep UI clickable */
-    .wrap { pointer-events: none; }
-    header, .controls, .btn, #timerCard { pointer-events: auto; }
+	.wrap {
+	transition: transform .25s ease-out;
+	pointer-events: none;
+	}
+	header, .controls, .btn, #timerCard { pointer-events: auto; }
     
 	/* Photo lightbox overlay */
 	.photo-overlay {
