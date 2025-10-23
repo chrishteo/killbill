@@ -153,6 +153,43 @@
       .intro-tiles{display:none;}
       .intro-head{animation:none; opacity:1; transform:none;}
     }
+	
+	/* Parallax */
+	.wrap { transition: transform .25s ease-out; }
+	
+	/* Photo lightbox overlay */
+	.photo-overlay {
+	  position: fixed; inset: 0; z-index: 9999;
+	  background: rgba(0,0,0,.9);
+	  display: grid; place-items: center;
+	  animation: fadeIn .35s ease;
+	}
+	.photo-overlay img {
+	  max-width: 90vw; max-height: 80vh; border-radius: 14px;
+	  box-shadow: 0 30px 120px rgba(0,0,0,.6);
+	}
+	.photo-overlay .caption {
+	  margin-top: 14px; color: #eaf0ff; font-size: clamp(1rem, .6vw + .9rem, 1.3rem);
+	  text-align: center; opacity: .9;
+	}
+	
+	@keyframes fadeIn { from {opacity: 0} to {opacity: 1} }
+	
+	/* End-of-countdown overlay */
+	.welcome-msg {
+	  position: fixed; inset: 0; z-index: 10000;
+	  display: grid; place-items: center; text-align: center;
+	  background: rgba(0,0,0,.85); color: #fff;
+	  padding: 24px; animation: fadeIn .6s ease;
+	}
+	.welcome-msg h2 {
+	  margin: 0 0 10px; font-weight: 900;
+	  font-size: clamp(1.6rem, 2.4vw + 1rem, 3.2rem);
+	}
+	.welcome-msg p {
+	  margin: 0; color: #cbd5e1; font-size: clamp(1rem, .8vw + .9rem, 1.4rem);
+	}
+	
   </style>
 </head>
 <body>
@@ -286,6 +323,18 @@
         const m=Math.floor(diff/60000);    diff-=m*60000;
         const s=Math.floor(diff/1000);
         days.textContent=pad(d); hours.textContent=pad(h); mins.textContent=pad(m); secs.textContent=pad(s);
+		
+		// celebration trigger at T=0 (runs once)
+        if (!window._celebrated && diff <= 0) {
+          window._celebrated = true;
+          try { clearInterval(cdInterval); } catch {}
+          // Switch to fullscreen slideshow, confetti, and message
+          goFullscreenSlideshow().then(() => {
+            launchConfetti();
+            showWelcomeMessage("Welcome home, master of masters! 🎓");
+          });
+        }
+        
       }
       const days=document.getElementById("days"), hours=document.getElementById("hours"),
             mins=document.getElementById("mins"), secs=document.getElementById("secs");
@@ -300,6 +349,68 @@
     const fsBtn=document.getElementById("fsBtn");
     const bg1=document.getElementById("bg1");
     const bg2=document.getElementById("bg2");
+	// === Parallax (gentle motion on the foreground wrapper) ===
+    (() => {
+      const root = document.querySelector('.wrap');
+      let raf = 0, targetX = 0, targetY = 0, currX = 0, currY = 0;
+    
+      function onMove(e){
+        const x = (e.clientX / innerWidth  - 0.5) * 8;  // adjust strength here
+        const y = (e.clientY / innerHeight - 0.5) * 8;
+        targetX = x; targetY = y;
+        if (!raf) raf = requestAnimationFrame(tick);
+      }
+      function tick(){
+        // lerp for smoothness
+        currX += (targetX - currX) * 0.12;
+        currY += (targetY - currY) * 0.12;
+        root.style.transform = `translate(${currX}px, ${currY}px)`;
+        if (Math.abs(targetX - currX) > 0.1 || Math.abs(targetY - currY) > 0.1) {
+          raf = requestAnimationFrame(tick);
+        } else {
+          raf = 0;
+        }
+      }
+      window.addEventListener('mousemove', onMove, { passive: true });
+    })();
+	
+	// === Click-to-view (lightbox) for wall images ===
+    (() => {
+      wall.addEventListener('click', (e) => {
+        const img = e.target.closest('.tile img');
+        if (!img) return;
+    
+        const overlay = document.createElement('div');
+        overlay.className = 'photo-overlay';
+        overlay.innerHTML = `
+          <div>
+            <img src="${img.src}" alt="${img.alt || 'Photo'}" />
+            <div class="caption">${img.alt || ''}</div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+    
+        const close = () => overlay.remove();
+        overlay.addEventListener('click', close, { once: true });
+        document.addEventListener('keydown', function esc(ev){
+          if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
+        });
+      });
+    })();
+	
+	// === Spacebar toggles wall rotation (pause/resume) ===
+    (() => {
+      document.addEventListener('keydown', (e) => {
+        if (e.key === ' ') {
+          e.preventDefault();
+          if (rotateTimer) { stopWallRotation(); rotateTimer = null; }
+          else startWallRotation();
+        }
+      });
+    })();
+    
+
+    
 
     // Rebuild when the timer card's size/layout changes (e.g., font load, fullscreen exit)
     const ro = new ResizeObserver(() => rebuildWallSoon());
@@ -561,6 +672,47 @@
     addEventListener("load", buildWall);
     addEventListener("resize", ()=>{ stopWallRotation(); rebuildWallSoon(); });
     shuffleBtn.addEventListener("click", ()=>{ stopWallRotation(); buildWall(); });
+
+    // --- Celebration helpers ---
+    function showWelcomeMessage(name = "Welcome Home! 🎓") {
+      const el = document.createElement('div');
+      el.className = 'welcome-msg';
+      el.innerHTML = `<div><h2>${name}</h2><p>We’re so proud of you.</p></div>`;
+      document.body.appendChild(el);
+      // click or ESC to dismiss
+      const close = () => el.remove();
+      el.addEventListener('click', close, { once: true });
+      document.addEventListener('keydown', function esc(ev){
+        if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
+      });
+    }
+    
+    // load confetti dynamically the first time we need it
+    function launchConfetti(){
+      if (window._confettiLoaded) { window._confetti && window._confetti(); return; }
+      const s = document.createElement('script');
+      s.src = 'https://cdn.skypack.dev/canvas-confetti';
+      s.onload = () => {
+        window._confettiLoaded = true;
+        // create a simple wrapper fn
+        window._confetti = () => {
+          // burst
+          window.confetti({ particleCount: 160, spread: 70, startVelocity: 45, ticks: 180 });
+          // and a second, wider one
+          setTimeout(() => window.confetti({ particleCount: 220, spread: 100, scalar: 1.1 }), 250);
+        };
+        window._confetti();
+      };
+      document.head.appendChild(s);
+    }
+    
+    async function goFullscreenSlideshow(){
+      try { await document.documentElement.requestFullscreen?.(); } catch {}
+      stopWallRotation();      // pause wall
+      startSlideshow();        // start fullscreen slideshow
+    }
+    
+
 
     // ===== Fullscreen slideshow (FIT, random order each time; IMAGES immutable) =====
     let slideIdx=0, onFirst=true, autoTimer=null; const AUTO_MS=3000;
