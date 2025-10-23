@@ -213,7 +213,7 @@
 
     // Staggered rotation settings (pairs with fade)
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const GROUP_SIZE = 5;                          // rotate in pairs
+    const GROUP_SIZE = 10;                          // rotate in pairs
     const STAGGER_MS = reducedMotion ? 0 : 140;    // delay between pairs
     const FADE_MS = 550;                           // must match CSS opacity transition duration
 
