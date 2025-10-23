@@ -16,14 +16,14 @@
       --tile-gap:6px;
       --tile-target:150px;   /* desired tile size */
       --tile-radius:10px;
-      --coverage:1.00;       /* fraction of grid filled (1.0 = all free cells) */
+      --coverage:0.92;       /* fraction of grid filled (1.0 = all free cells) */
       --guard-cells:0;       /* safety ring around timer (was 0) */
     }
     @media (max-width: 640px){
       :root{
         --tile-gap:4px;
         --tile-target:92px;
-        --coverage:1.00;
+        --coverage:0.92;
         --guard-cells:0;
       }
     }
@@ -162,7 +162,10 @@
 	
 	/* Parallax */
 	.wrap { transition: transform .25s ease-out; }
-	
+	/* Let clicks pass through the foreground wrapper, but keep UI clickable */
+    .wrap { pointer-events: none; }
+    header, .controls, .btn, #timerCard { pointer-events: auto; }
+    
 	/* Photo lightbox overlay */
 	.photo-overlay {
 	  position: fixed; inset: 0; z-index: 9999;
@@ -407,18 +410,28 @@
     
 	
 	// === Spacebar toggles wall rotation (pause/resume) ===
+    // === Spacebar toggles wall rotation (pause/resume) ===
     (() => {
-      document.addEventListener('keydown', (e) => {
+      window.addEventListener('keydown', (e) => {
         if (e.key === ' ') {
           const ae = document.activeElement;
-          const isInteractive = ae && /^(INPUT|TEXTAREA|BUTTON|SELECT)$/.test(ae.tagName) || ae?.isContentEditable;
-          if (isInteractive) return;  // let buttons/inputs behave normally
+          const isInteractive =
+            (ae && /^(INPUT|TEXTAREA|BUTTON|SELECT)$/.test(ae.tagName)) || ae?.isContentEditable;
+          if (isInteractive) return; // don't hijack spacebar in inputs/buttons
           e.preventDefault();
-          if (rotateTimer) { stopWallRotation(); rotateTimer = null; }
-          else startWallRotation();
+    
+          if (rotateTimer) {
+            stopWallRotation(); rotateTimer = null;
+            wall.classList.add('paused');   // show "Paused" badge (CSS below)
+          } else {
+            startWallRotation();
+            wall.classList.remove('paused');
+          }
         }
       });
     })();
+    
+    
     
 
     
@@ -656,6 +669,14 @@
 
       const initial = allIdx.slice(0, Math.min(desired, allIdx.length));
       pool = allIdx.slice(initial.length);
+	  // Ensure a minimum rotation pool so swaps actually happen
+      const MIN_POOL = 6;
+      if (pool.length < MIN_POOL && initial.length > MIN_POOL) {
+        const needed = MIN_POOL - pool.length;
+        const giveBack = initial.splice(initial.length - needed, needed);
+        pool.push(...giveBack);
+      }
+      
       while(initial.length < desired){ initial.push(...allIdx); }
 
       for(let i=0;i<cells.length;i++){
