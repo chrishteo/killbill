@@ -55,6 +55,16 @@
     .wall{position:fixed; inset:0; z-index:0; display:grid; gap:var(--tile-gap); padding:var(--tile-gap); background:#0b0c10}
     .fs-active .wall{display:none}
     .tile{background: #000; border-radius:var(--tile-radius); overflow:hidden; position:relative; contain: paint;}
+	/* Show a small badge when rotation is paused via Spacebar */
+    .wall.paused::after{
+      content:"Paused";
+      position:fixed; right:10px; bottom:10px; z-index:10;
+      background:rgba(0,0,0,.6); color:#fff;
+      font-weight:700; font-size:12px;
+      padding:6px 10px; border-radius:999px;
+      border:1px solid rgba(255,255,255,.18);
+    }
+    
      /* base styles (restore these) */
     .tile img{
       position:absolute; inset:0;
