@@ -563,7 +563,7 @@
     shuffleBtn.addEventListener("click", ()=>{ stopWallRotation(); buildWall(); });
 
     // ===== Fullscreen slideshow (FIT, random order each time; IMAGES immutable) =====
-    let slideIdx=0, onFirst=true, autoTimer=null; const AUTO_MS=6000;
+    let slideIdx=0, onFirst=true, autoTimer=null; const AUTO_MS=3000;
     let fsOrder = [];   // shuffled array of indexes into IMAGES
 
     function setBG(div, i){
