@@ -351,28 +351,25 @@
     const bg2=document.getElementById("bg2");
 	// === Parallax (gentle motion on the foreground wrapper) ===
     (() => {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
       const root = document.querySelector('.wrap');
       let raf = 0, targetX = 0, targetY = 0, currX = 0, currY = 0;
-    
       function onMove(e){
-        const x = (e.clientX / innerWidth  - 0.5) * 8;  // adjust strength here
+        const x = (e.clientX / innerWidth  - 0.5) * 8;
         const y = (e.clientY / innerHeight - 0.5) * 8;
         targetX = x; targetY = y;
         if (!raf) raf = requestAnimationFrame(tick);
       }
       function tick(){
-        // lerp for smoothness
         currX += (targetX - currX) * 0.12;
         currY += (targetY - currY) * 0.12;
         root.style.transform = `translate(${currX}px, ${currY}px)`;
-        if (Math.abs(targetX - currX) > 0.1 || Math.abs(targetY - currY) > 0.1) {
-          raf = requestAnimationFrame(tick);
-        } else {
-          raf = 0;
-        }
+        if (Math.abs(targetX - currX) > 0.1 || Math.abs(targetY - currY) > 0.1) raf = requestAnimationFrame(tick);
+        else raf = 0;
       }
       window.addEventListener('mousemove', onMove, { passive: true });
     })();
+    
 	
 	// === Click-to-view (lightbox) for wall images ===
     (() => {
@@ -402,6 +399,9 @@
     (() => {
       document.addEventListener('keydown', (e) => {
         if (e.key === ' ') {
+          const ae = document.activeElement;
+          const isInteractive = ae && /^(INPUT|TEXTAREA|BUTTON|SELECT)$/.test(ae.tagName) || ae?.isContentEditable;
+          if (isInteractive) return;  // let buttons/inputs behave normally
           e.preventDefault();
           if (rotateTimer) { stopWallRotation(); rotateTimer = null; }
           else startWallRotation();
