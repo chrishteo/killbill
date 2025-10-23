@@ -16,11 +16,12 @@
       --tile-gap:6px;
       --tile-target:150px;   /* desired tile size */
       --tile-radius:10px;
-      --coverage:1.00;       /* ~60% of grid filled */
+      --coverage:1.00;       /* fraction of grid filled (1.0 = all free cells) */
       --guard-cells:0;       /* safety ring around timer */
     }
     @media (max-width: 640px){
       :root{
+        --tile-gap:4px;
         --tile-target:92px;
         --coverage:1.00;
         --guard-cells:0;
@@ -53,12 +54,13 @@
     /* ===== Photo Wall (hidden in fullscreen) ===== */
     .wall{position:fixed; inset:0; z-index:0; display:grid; gap:var(--tile-gap); padding:var(--tile-gap); background:#0b0c10}
     .fs-active .wall{display:none}
-    .tile{background:#10131c; border-radius:var(--tile-radius); overflow:hidden; position:relative}
+    .tile{background:#10131c; border-radius:var(--tile-radius); overflow:hidden; position:relative; contain: paint;}
     .tile img{
       position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
       transform:scale(1.04);
       transition:transform .25s ease, opacity .35s ease, filter .25s ease;
-      opacity:.96; filter:saturate(1.05) contrast(1.02) brightness(.98)
+      opacity:.96; filter:saturate(1.05) contrast(1.02) brightness(.98);
+      will-change: opacity, transform;
     }
     .tile:hover img{transform:scale(1.08)}
 
@@ -200,10 +202,14 @@
   <script>
     // ===== CONFIG =====
     const DEFAULT_TARGET = new Date("2025-11-01T19:40:00+03:00");
-    // Rotating wall settings
-    const ROTATE_MS = 6000;       // how often to rotate some tiles
-    const ROTATE_BATCH = 3;       // how many tiles swap per tick
-    const PAUSE_ON_HOVER = true;  // don't swap a tile if it's hovered
+
+    // Adaptive rotation: a bit slower and smaller batches on touch devices
+    const isTouch = (navigator.maxTouchPoints || 'ontouchstart' in window);
+    let ROTATE_MS = isTouch ? 7000 : 6000;     // tick rate
+    function rotateBatchSize(){                // ~6–10% of visible tiles per tick
+      return Math.max(1, Math.round(tiles.length * (isTouch ? 0.06 : 0.10)));
+    }
+    const PAUSE_ON_HOVER = true;               // don't swap a tile if hovered (desktop)
 
     const IMAGES = [
       { src: "images/02cd0734-aeed-481c-8aa5-f702d5d0d8f8.jpg", caption: "02cd0734-aeed-481c-8aa5-f702d5d0d8f8" },
@@ -401,11 +407,12 @@
       if(candidates.length === 0) return;
 
       shuffleInPlace(candidates);
-      const swaps = Math.min(ROTATE_BATCH, candidates.length, pool.length);
+      const swaps = Math.min(rotateBatchSize(), candidates.length, pool.length);
       for(let k=0; k<swaps; k++){
         const {t} = candidates[k];
         let nextIdx = pool.shift();
         if(nextIdx == null) break;
+
         if(visibleSet.has(nextIdx)){
           let found = -1;
           for(let j=0;j<pool.length;j++){
@@ -417,17 +424,32 @@
           }
         }
 
-        if(Number.isInteger(t.imgIndex)){
+        if (Number.isInteger(t.imgIndex)) {
           visibleSet.delete(t.imgIndex);
           pool.push(t.imgIndex);
         }
-        t.imgEl.style.opacity = 0;
-        const newImg = IMAGES[nextIdx];
-        setTimeout(()=>{
-          t.imgEl.src = newImg.src;
-          t.imgEl.alt = newImg.caption || "Photo";
-          t.imgEl.onload = ()=>{ t.imgEl.style.opacity = .96; };
-        }, 150);
+
+        // Preload first, then cross-fade (no black gap)
+        const meta = IMAGES[nextIdx];
+        const pre = new Image();
+        pre.decoding = "async";
+        pre.src = meta.src;
+
+        pre.onload = () => {
+          const el = t.imgEl;
+          el.style.transition = "opacity .35s ease";
+          el.style.opacity = 0;
+          requestAnimationFrame(() => {
+            el.src = pre.src;
+            el.alt = meta.caption || "Photo";
+            el.style.opacity = .96;
+          });
+        };
+
+        pre.onerror = () => {
+          // put it back if it failed to load
+          pool.push(nextIdx);
+        };
 
         t.imgIndex = nextIdx;
         visibleSet.add(nextIdx);
@@ -458,9 +480,12 @@
       const total=rows*cols;
       const relaxed = (guard!==guardBase);
       const coverage = relaxed ? Math.min(coverageBase, 0.40) : coverageBase;
-      const desired=Math.min(free.length, Math.max(1, Math.round(total*coverage)));
 
-      const cells=pickEvenlySpacedCells(free, desired, cols, rows);
+      const desired = Math.min(free.length, Math.max(1, Math.round(total * coverage)));
+      // At (almost) full coverage, just use every free cell to avoid holes.
+      const cells = (desired >= free.length - 1)
+        ? free
+        : pickEvenlySpacedCells(free, desired, cols, rows);
 
       const allIdx = [...IMAGES.keys()];
       shuffleInPlace(allIdx);
@@ -481,7 +506,8 @@
         t.style.gridColumn=(col+1); t.style.gridRow=(row+1);
         const img=document.createElement("img");
         img.src=IMAGES[idx].src; img.alt=IMAGES[idx].caption||`Photo ${i+1}`;
-        img.loading="lazy"; img.decoding="async";
+        img.loading="eager";
+        img.decoding="async";
         t.appendChild(img); wall.appendChild(t);
         tiles.push({ el: t, imgEl: img, imgIndex: idx });
         visibleSet.add(idx);
@@ -497,22 +523,28 @@
     addEventListener("resize", ()=>{ stopWallRotation(); rebuildWallSoon(); });
     shuffleBtn.addEventListener("click", ()=>{ stopWallRotation(); buildWall(); });
 
-    // ===== Fullscreen slideshow (FIT, random order each time) =====
+    // ===== Fullscreen slideshow (FIT, random order each time; IMAGES immutable) =====
     let slideIdx=0, onFirst=true, autoTimer=null; const AUTO_MS=6000;
+    let fsOrder = [];   // shuffled array of indexes into IMAGES
+
     function setBG(div, i){
-      const it=IMAGES[(i+IMAGES.length)%IMAGES.length];
+      if (!fsOrder.length) return;
+      const id = fsOrder[(i + fsOrder.length) % fsOrder.length];
+      const it = IMAGES[id];
       div.style.backgroundImage=`url('${it.src}')`;
       div.setAttribute("aria-label", it.caption||"Background photo");
     }
     function showNext(){
-      const next=(slideIdx+1)%IMAGES.length;
+      const next=(slideIdx+1)%fsOrder.length;
       if(onFirst){ setBG(bg2,next); bg2.style.opacity=1; bg1.style.opacity=0; }
       else       { setBG(bg1,next); bg1.style.opacity=1; bg2.style.opacity=0; }
       onFirst=!onFirst; slideIdx=next;
     }
     function startSlideshow(){
       if(!IMAGES.length) return;
-      shuffleInPlace(IMAGES);      // randomize order on each enter
+      fsOrder = IMAGES.map((_, i) => i);
+      shuffleInPlace(fsOrder);      // shuffle the indexes, not IMAGES
+      slideIdx = 0; onFirst = true;
       setBG(bg1,0);
       if(autoTimer) clearInterval(autoTimer);
       autoTimer=setInterval(showNext,AUTO_MS);
@@ -522,7 +554,7 @@
       if(!document.fullscreenElement) return;
       if(e.key==="ArrowRight"){ showNext(); restartAuto(); }
       if(e.key==="ArrowLeft"){
-        const prev=(slideIdx-1+IMAGES.length)%IMAGES.length;
+        const prev=(slideIdx-1+fsOrder.length)%fsOrder.length;
         if(onFirst){ setBG(bg2,prev); bg2.style.opacity=1; bg1.style.opacity=0; }
         else       { setBG(bg1,prev); bg1.style.opacity=1; bg2.style.opacity=0; }
         onFirst=!onFirst; slideIdx=prev; restartAuto();
