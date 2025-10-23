@@ -211,6 +211,12 @@
     }
     const PAUSE_ON_HOVER = true;               // don't swap a tile if hovered (desktop)
 
+    // Staggered rotation settings (pairs with fade)
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const GROUP_SIZE = 2;                          // rotate in pairs
+    const STAGGER_MS = reducedMotion ? 0 : 140;    // delay between pairs
+    const FADE_MS = 350;                           // must match CSS opacity transition duration
+
     const IMAGES = [
       { src: "images/02cd0734-aeed-481c-8aa5-f702d5d0d8f8.jpg", caption: "02cd0734-aeed-481c-8aa5-f702d5d0d8f8" },
       { src: "images/093fa11a-09d5-46c5-992f-a8214f33dd24.jpg", caption: "093fa11a-09d5-46c5-992f-a8214f33dd24" },
@@ -360,7 +366,7 @@
     function shuffleInPlace(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} return a; }
 
     // ===== Photo Wall (with rotation) =====
-    let tiles = [];                    // [{ el, imgEl, imgIndex }]
+    let tiles = [];                    // [{ el, imgEl, imgIndex, busy }]
     let visibleSet = new Set();        // image indexes currently on screen
     let pool = [];                     // image indexes available to rotate in
     let rotateTimer = null;
@@ -392,44 +398,60 @@
       rotateTimer = setInterval(rotateSomeTiles, ROTATE_MS);
     }
 
+    // --- NEW: staggered pair-wise rotation with preload + cross-fade
     function rotateSomeTiles(){
       if(pool.length === 0 || tiles.length === 0) return;
 
       const now = performance.now();
       const candidates = tiles
-        .map((t, i) => ({t, i}))
-        .filter(({t})=>{
-          if(PAUSE_ON_HOVER && t.el.matches(':hover')) return false;
+        .map((t, i) => ({ t, i }))
+        .filter(({ t }) => {
+          if (t.busy) return false;
+          if (PAUSE_ON_HOVER && t.el.matches(':hover')) return false;
           const last = lastSwapAt.get(t.el) || 0;
           return (now - last) > ROTATE_MS * 1.2;
         });
 
-      if(candidates.length === 0) return;
+      if (candidates.length === 0) return;
+
+      const swaps = Math.min(rotateBatchSize(), candidates.length, pool.length);
+      if (swaps <= 0) return;
 
       shuffleInPlace(candidates);
-      const swaps = Math.min(rotateBatchSize(), candidates.length, pool.length);
-      for(let k=0; k<swaps; k++){
-        const {t} = candidates[k];
-        let nextIdx = pool.shift();
-        if(nextIdx == null) break;
+      const chosen = candidates.slice(0, swaps).map(c => c.t);
 
-        if(visibleSet.has(nextIdx)){
+      // Chunk chosen tiles into pairs
+      const pairs = [];
+      for (let i = 0; i < chosen.length; i += GROUP_SIZE) {
+        pairs.push(chosen.slice(i, i + GROUP_SIZE));
+      }
+
+      function swapTile(t){
+        if (pool.length === 0) return;
+
+        // pick a non-visible index if possible
+        let nextIdx = pool.shift();
+        if (nextIdx == null) return;
+        if (visibleSet.has(nextIdx)) {
           let found = -1;
-          for(let j=0;j<pool.length;j++){
-            if(!visibleSet.has(pool[j])){ found = j; break; }
+          for (let j = 0; j < pool.length; j++) {
+            if (!visibleSet.has(pool[j])) { found = j; break; }
           }
-          if(found >= 0){
+          if (found >= 0) {
             pool.push(nextIdx);
             nextIdx = pool.splice(found, 1)[0];
           }
         }
 
+        t.busy = true;
+
+        // remove old from visible set and return to pool
         if (Number.isInteger(t.imgIndex)) {
           visibleSet.delete(t.imgIndex);
           pool.push(t.imgIndex);
         }
 
-        // Preload first, then cross-fade (no black gap)
+        // preload → cross-fade swap
         const meta = IMAGES[nextIdx];
         const pre = new Image();
         pre.decoding = "async";
@@ -437,24 +459,37 @@
 
         pre.onload = () => {
           const el = t.imgEl;
-          el.style.transition = "opacity .35s ease";
+          el.style.transition = `opacity ${FADE_MS}ms ease`;
           el.style.opacity = 0;
+
           requestAnimationFrame(() => {
             el.src = pre.src;
             el.alt = meta.caption || "Photo";
             el.style.opacity = .96;
+
+            setTimeout(() => {
+              t.busy = false;
+            }, FADE_MS + 20);
           });
         };
 
         pre.onerror = () => {
-          // put it back if it failed to load
+          // put it back if it failed to load; free the tile
           pool.push(nextIdx);
+          t.busy = false;
         };
 
         t.imgIndex = nextIdx;
         visibleSet.add(nextIdx);
-        lastSwapAt.set(t.el, now);
+        lastSwapAt.set(t.el, performance.now());
       }
+
+      // Fire each pair with a stagger for a ripple effect
+      pairs.forEach((pair, idx) => {
+        setTimeout(() => {
+          pair.forEach(t => swapTile(t));
+        }, idx * STAGGER_MS);
+      });
     }
 
     function buildWall(){
@@ -509,7 +544,7 @@
         img.loading="eager";
         img.decoding="async";
         t.appendChild(img); wall.appendChild(t);
-        tiles.push({ el: t, imgEl: img, imgIndex: idx });
+        tiles.push({ el: t, imgEl: img, imgIndex: idx, busy: false }); /* busy flag */
         visibleSet.add(idx);
       }
 
@@ -578,9 +613,10 @@
       }
     });
   </script>
-  
+
+  <!-- Vercel Web Analytics -->
   <script>
-  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+    window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
   </script>
   <script defer src="/_vercel/insights/script.js"></script>
 
