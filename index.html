@@ -207,15 +207,15 @@
     const isTouch = (navigator.maxTouchPoints || 'ontouchstart' in window);
     let ROTATE_MS = isTouch ? 7000 : 6000;     // tick rate
     function rotateBatchSize(){                // ~6–10% of visible tiles per tick
-      return Math.max(1, Math.round(tiles.length * (isTouch ? 0.20 : 0.40)));
+      return Math.max(1, Math.round(tiles.length * (isTouch ? 0.40 : 0.60)));
     }
     const PAUSE_ON_HOVER = true;               // don't swap a tile if hovered (desktop)
 
     // Staggered rotation settings (pairs with fade)
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const GROUP_SIZE = 2;                          // rotate in pairs
+    const GROUP_SIZE = 5;                          // rotate in pairs
     const STAGGER_MS = reducedMotion ? 0 : 140;    // delay between pairs
-    const FADE_MS = 350;                           // must match CSS opacity transition duration
+    const FADE_MS = 550;                           // must match CSS opacity transition duration
 
     const IMAGES = [
       { src: "images/02cd0734-aeed-481c-8aa5-f702d5d0d8f8.jpg", caption: "02cd0734-aeed-481c-8aa5-f702d5d0d8f8" },
