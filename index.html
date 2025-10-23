@@ -17,7 +17,7 @@
       --tile-target:150px;   /* desired tile size */
       --tile-radius:10px;
       --coverage:1.00;       /* fraction of grid filled (1.0 = all free cells) */
-      --guard-cells:0;       /* safety ring around timer */
+      --guard-cells:1;       /* safety ring around timer (was 0) */
     }
     @media (max-width: 640px){
       :root{
@@ -300,6 +300,10 @@
     const fsBtn=document.getElementById("fsBtn");
     const bg1=document.getElementById("bg1");
     const bg2=document.getElementById("bg2");
+
+    // Rebuild when the timer card's size/layout changes (e.g., font load, fullscreen exit)
+    const ro = new ResizeObserver(() => rebuildWallSoon());
+    ro.observe(timerCard);
 
     // ===== Intro elements & logic
     const intro = document.getElementById('intro');
@@ -601,15 +605,32 @@
       if(!document.fullscreenElement) document.documentElement.requestFullscreen?.();
       else document.exitFullscreen?.();
     });
-    document.addEventListener("fullscreenchange", ()=>{
-      const fs=!!document.fullscreenElement;
+
+    // >>> REPLACED fullscreenchange handler (transition-aware + fallback)
+    document.addEventListener("fullscreenchange", () => {
+      const fs = !!document.fullscreenElement;
       document.body.classList.toggle("fs-active", fs);
-      if(fs){
+
+      if (fs) {
         stopWallRotation();
         startSlideshow();
       } else {
-        if(autoTimer) clearInterval(autoTimer);
-        setTimeout(buildWall, 30);
+        if (autoTimer) clearInterval(autoTimer);
+
+        // Wait for the timer-card CSS transition (~250ms) to complete,
+        // then rebuild once the layout has settled.
+        const afterTransition = () => {
+          timerCard.removeEventListener("transitionend", afterTransition);
+          // one extra frame to be safe
+          requestAnimationFrame(() => buildWall());
+        };
+
+        // If the transition fires, use it; otherwise fall back to a timeout.
+        timerCard.addEventListener("transitionend", afterTransition, { once: true });
+        setTimeout(() => {
+          try { timerCard.removeEventListener("transitionend", afterTransition); } catch {}
+          requestAnimationFrame(() => buildWall());
+        }, 320); // a hair longer than your .25s transition
       }
     });
   </script>
