@@ -56,14 +56,16 @@
     .fs-active .wall{display:none}
     .tile{background: #000; border-radius:var(--tile-radius); overflow:hidden; position:relative; contain: paint;}
 	/* Show a small badge when rotation is paused via Spacebar */
-    .wall.paused::after{
+    /* Show a small badge when rotation is paused via Spacebar */
+    body.paused-badge::after{
       content:"Paused";
-      position:fixed; right:10px; bottom:10px; z-index:10;
+      position:fixed; right:10px; bottom:10px; z-index:999;
       background:rgba(0,0,0,.6); color:#fff;
       font-weight:700; font-size:12px;
       padding:6px 10px; border-radius:999px;
       border:1px solid rgba(255,255,255,.18);
     }
+    
     
      /* base styles (restore these) */
     .tile img{
@@ -433,10 +435,10 @@
     
           if (rotateTimer) {
             stopWallRotation(); rotateTimer = null;
-            wall.classList.add('paused');   // show "Paused" badge (CSS below)
+            document.body.classList.add('paused-badge');   // show badge
           } else {
             startWallRotation();
-            wall.classList.remove('paused');
+            document.body.classList.remove('paused-badge'); // hide badge
           }
         }
       });
