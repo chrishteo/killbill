@@ -26,6 +26,15 @@
       --coverage:0.92;       /* fraction of grid filled (1.0 = all free cells) */
       --guard-cells:0;       /* safety ring around timer */
     }
+	/* Confetti canvas overlay */
+    #confettiCanvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 10002; /* above slideshow + welcome-msg */
+    }
 
     @media (max-width: 640px){
       :root{
@@ -464,6 +473,15 @@
       50%  {opacity:.75; filter:blur(32px) brightness(1.4);}
       100% {opacity:.35; filter:blur(40px) brightness(1);}
     }
+	/* Confetti canvas (used at celebration time) */
+	#confettiCanvas {
+	  position: fixed;
+	  inset: 0;
+	  width: 100vw;
+	  height: 100vh;
+	  pointer-events: none;
+	  z-index: 10002; /* sits above everything, party mode */
+	}
   </style>
 </head>
 
@@ -601,60 +619,156 @@
     const pad = n => String(n).padStart(2,"0");
     let cdInterval=null;
 
-    // confetti helpers
-    let _confettiLoaded = false;
-    let _confettiInterval = null;
-
-    function startConfettiLib(cb) {
-      // ensure canvas-confetti is loaded before calling cb
-      if (_confettiLoaded) {
-        cb();
-        return;
-      }
-      const s = document.createElement('script');
-      s.src = 'https://cdn.skypack.dev/canvas-confetti';
-      s.onload = () => {
-        _confettiLoaded = true;
-        cb();
-      };
-      document.head.appendChild(s);
-    }
-
-    // Start the big burst, then drizzle until stopped
+    // Inline confetti (no external CDN)
+    let _confettiAnimating = false;
+    let _confettiStopRequested = false;
+    
     function launchConfettiRain() {
-      startConfettiLib(() => {
-        // initial boom from center-ish
-        window.confetti({
-          particleCount: 200,
-          spread: 80,
-          startVelocity: 45,
-          ticks: 200,
-          origin: { x: 0.5, y: 0.4 }
-        });
-
-        // repeating drizzle alternating left/right
-        let side = 0;
-        _confettiInterval = setInterval(() => {
-          const x = side ? 0.2 : 0.8;
-          side = 1 - side;
-          window.confetti({
-            particleCount: 12,
-            spread: 70,
-            startVelocity: 30,
-            ticks: 160,
-            scalar: 0.9,
-            origin: { x, y: 0 }
+      // create or reuse the canvas
+      let canvas = document.getElementById("confettiCanvas");
+      if (!canvas) {
+        canvas = document.createElement("canvas");
+        canvas.id = "confettiCanvas";
+        document.body.appendChild(canvas);
+      }
+    
+      const ctx = canvas.getContext("2d");
+      let W, H;
+    
+      function resize() {
+        W = canvas.width = window.innerWidth;
+        H = canvas.height = window.innerHeight;
+      }
+      resize();
+      window.addEventListener("resize", resize);
+    
+      const COLORS = ["#ff4d4d", "#ffd633", "#4dff4d", "#4dd2ff", "#b84dff", "#ffffff"];
+    
+      const gravity = 0.12;
+      const drag = 0.985;
+      const terminalVel = 5;
+    
+      // each particle is a tiny paper rectangle
+      const particles = [];
+    
+      // helper: spawn N confetti in a burst, with direction "spreadDeg" and "power"
+      function spawnBurst(count, spreadDeg, power, originX, originY, upwardBias = -3) {
+        for (let i = 0; i < count; i++) {
+          const angle = (Math.random() * spreadDeg - spreadDeg / 2) * (Math.PI / 180);
+          const speed = power * (0.5 + Math.random() * 0.5);
+    
+          particles.push({
+            x: originX,
+            y: originY,
+            w: 6 + Math.random() * 4,
+            h: 10 + Math.random() * 6,
+            color: COLORS[Math.floor(Math.random() * COLORS.length)],
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed + upwardBias,
+            rot: Math.random() * Math.PI * 2,
+            vr: (Math.random() - 0.5) * 0.2,
+            opacity: 1
           });
+        }
+      }
+    
+      // helper: side drizzle spawners
+      let drizzleSide = 0;
+      let drizzleTimer = null;
+      function startDrizzle() {
+        if (drizzleTimer) return;
+        drizzleTimer = setInterval(() => {
+          const fromLeft = drizzleSide === 0;
+          drizzleSide = 1 - drizzleSide;
+          const x = fromLeft ? W * 0.2 : W * 0.8;
+          const y = H * 0.05;
+          spawnBurst(12, 70, 8, x, y, 0); // mostly downward-ish
         }, 400);
-      });
+      }
+    
+      function stopDrizzle() {
+        if (drizzleTimer) {
+          clearInterval(drizzleTimer);
+          drizzleTimer = null;
+        }
+      }
+    
+      // initial BOOM from center/top-third:
+      spawnBurst(200, 80, 10, W * 0.5, H * 0.33, -3);
+    
+      // start drizzle
+      startDrizzle();
+    
+      // if we're already animating, don't start another RAF loop
+      if (_confettiAnimating) return;
+      _confettiAnimating = true;
+      _confettiStopRequested = false;
+    
+      function step() {
+        ctx.clearRect(0, 0, W, H);
+    
+        particles.forEach(p => {
+          // physics:
+          p.vy += gravity;
+          if (p.vy > terminalVel) p.vy = terminalVel;
+          p.vx *= drag;
+          p.vy *= drag;
+          p.x += p.vx;
+          p.y += p.vy;
+          p.rot += p.vr;
+    
+          // fade out near bottom
+          if (p.y > H * 0.7) {
+            p.opacity -= 0.01;
+          }
+    
+          // draw particle
+          ctx.globalAlpha = Math.max(p.opacity, 0);
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+          ctx.restore();
+        });
+    
+        // remove dead ones
+        for (let i = particles.length - 1; i >= 0; i--) {
+          if (particles[i].opacity <= 0 || particles[i].y > H + 100) {
+            particles.splice(i, 1);
+          }
+        }
+    
+        // if user closed the overlay, we stop spawning drizzle
+        // and when everything has faded out we end the loop
+        if (_confettiStopRequested) {
+          stopDrizzle();
+          if (particles.length === 0) {
+            _confettiAnimating = false;
+            // optional clean up canvas:
+            // canvas.remove();
+            return;
+          }
+        }
+    
+        requestAnimationFrame(step);
+      }
+    
+      requestAnimationFrame(step);
+    
+      // expose a stopper so we can end the rain when overlay closes
+      window._stopConfettiRainInternal = () => {
+        _confettiStopRequested = true;
+      };
     }
-
+    
     function stopConfettiRain() {
-      if (_confettiInterval) {
-        clearInterval(_confettiInterval);
-        _confettiInterval = null;
+      // tell the loop to wind down
+      if (window._stopConfettiRainInternal) {
+        window._stopConfettiRainInternal();
       }
     }
+    
 
     // Build + show the celebration overlay
     function showWelcomeMessage(name = "Welcome home, master of masters! 🎓") {
