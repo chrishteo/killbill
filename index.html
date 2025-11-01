@@ -260,7 +260,17 @@
 
   <script>
     // ===== CONFIG =====
-    const DEFAULT_TARGET = new Date("2025-11-01T19:40:00+03:00");
+    // ===== CONFIG =====
+
+	// Turn this to true ONLY in a test branch / preview deploy.
+	// Leave it false on main.
+	const TEST_CELEBRATION_NOW = false;
+	
+	// If we're testing, make countdown hit zero ~10s after load.
+	// Otherwise, use the real date.
+	const DEFAULT_TARGET = TEST_CELEBRATION_NOW
+	? new Date(Date.now() + 10_000) // 10 seconds from page load
+	: new Date("2025-11-01T19:40:00+03:00");
 
     // Adaptive rotation: a bit slower and smaller batches on touch devices
     const isTouch = (navigator.maxTouchPoints || 'ontouchstart' in window);
